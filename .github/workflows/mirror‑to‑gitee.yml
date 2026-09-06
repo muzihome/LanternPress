@@ -1,0 +1,37 @@
+name: Git Mirror GitHub To Gitee
+
+on:
+  push:
+    # 删除branches过滤，所有分支push全部触发
+  delete:   # 监听分支/tag删除，同步删除Gitee端
+  workflow_dispatch: # 网页手动运行
+  schedule:
+    - cron:"0 2 * * *"
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full mirror repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 拉取完整全部历史、所有分支、tag
+
+      - name: Configure git credentials for Gitee
+        env:
+          GITEE_PRIVATE_KEY: ${{ secrets.GITEE_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "${GITEE_PRIVATE_KEY}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan gitee.com >> ~/.ssh/known_hosts
+          git config --global user.name "GitHub Mirror Bot"
+          git config --global user.email "muzinext@gmail.com"
+
+      - name: Add Gitee remote target
+        run: |
+          git remote add gitee git@gitee.com:muzinext/LanternPress.git
+
+      - name: Mirror push to Gitee
+        run: |
+          git push --mirror gitee
+
