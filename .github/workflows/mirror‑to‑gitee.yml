@@ -1,4 +1,4 @@
-name: Mirror-to-Gitee
+name: Mirror GitHub → Gitee (Pure Git exclude .github)
 
 on:
   push:
@@ -31,16 +31,14 @@ jobs:
           git config --global user.name "Mirror‑Bot"
           git config --global user.email "mirror@no-reply.local"
 
-      - name: Add Gitee remote
-        run: |
-          git remote remove gitee || true
-          git remote add gitee git@gitee.com:muzinext/LanternPress.git
-
       - name: Create temp clone & remove .github from whole history
         run: |
           git clone --no-local . ./filter_work
           cd ./filter_work
           git filter-repo --path .github --invert-paths --force
+          # 在临时仓库内部添加gitee remote
+          git remote remove gitee || true
+          git remote add gitee git@gitee.com:muzinext/LanternPress.git
           cd ..
 
       - name: Push filtered branches to Gitee
