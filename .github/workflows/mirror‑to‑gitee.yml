@@ -6,7 +6,7 @@ on:
   delete:   # 监听分支/tag删除，同步删除Gitee端
   workflow_dispatch: # 网页手动运行
   schedule:
-    - cron:"0 2 * * *"
+    - cron:  '0 2 * * *'
 jobs:
   mirror:
     runs-on: ubuntu-latest
