@@ -260,11 +260,19 @@ if ($isPost) {
                 </div>
             <?php endif; ?>
 
-            <h2>推荐阅读</h2>
-            <div class="post-prev-next">
-                <?php thePrev($this, $this->options); ?>
-                <?php theNext($this, $this->options); ?>
-            </div>
+            <?php // 检查是否有上一篇或下一篇文章，无内容时不输出"推荐阅读"模块 ?>
+            <?php
+            ob_start();
+            thePrev($this, $this->options);
+            theNext($this, $this->options);
+            $prevNextContent = ob_get_clean();
+            ?>
+            <?php if (trim($prevNextContent) !== ''): ?>
+                <h2><?php _e('推荐阅读'); ?></h2>
+                <div class="post-prev-next">
+                    <?php echo $prevNextContent; ?>
+                </div>
+            <?php endif; ?>
 
             <?php // E-b：相关文章（同标签 TOP 3，无标签时静默跳过） ?>
             <?php
