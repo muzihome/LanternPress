@@ -66,8 +66,8 @@ function threadedComments(object $comments, object $options): void
                     <?php _e('添加评论'); ?>
                     <span style="font-size: 16px">
                         <?php if ($this->user->hasLogin()): ?>
-                            <?php printf(_t('已登录为 %s，'), '<a href="' . $this->options->profileUrl() . '" data-no-instant>' . $this->user->screenName() . '</a>'); ?>
-                            <a href="<?php $this->options->logoutUrl(); ?>" title="<?php echo lt_esc_attr(_t('退出登录')); ?>" data-no-instant><?php _e('退出登录'); ?></a>
+                            <?php echo _t('已登录为'); ?> <a href="<?php echo $this->options->profileUrl; ?>" data-no-instant><?php echo $this->user->screenName; ?></a>，
+                            <a href="<?php echo $this->options->logoutUrl; ?>" title="<?php echo lt_esc_attr(_t('退出登录')); ?>" data-no-instant><?php _e('退出登录'); ?></a>
                         <?php endif; ?>
                         <?php $comments->cancelReply(_t(' 取消回复')); ?>
                     </span>
@@ -82,7 +82,7 @@ function threadedComments(object $comments, object $options): void
                         </div>
                     <?php endif; ?>
                     <button type="submit" class="submit" id="misubmit"><?php _e('提交'); ?></button>
-                    <?php $security = $this->widget('\Widget\Security'); ?>
+                    <?php $security = $this->widget('Widget_Security'); ?>
                     <input type="hidden" name="_" value="<?php echo lt_esc_attr($security->getToken($this->request->getReferer())); ?>">
                 </form>
             </div>
