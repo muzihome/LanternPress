@@ -1,22 +1,22 @@
-name: Git Mirror GitHub To Gitee
+name: Mirror GitHub → Gitee (Pure Git, exclude .github folder)
 
 on:
   push:
-    # 删除branches过滤，所有分支push全部触发
-  delete:   # 监听分支/tag删除，同步删除Gitee端
-  workflow_dispatch: # 网页手动运行
+  delete:
+  workflow_dispatch:
   schedule:
-    - cron:  '0 2 * * *'
+    - cron: '0 0 * * *'
+
 jobs:
   mirror:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout full mirror repository
+      - name: Checkout full history
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # 拉取完整全部历史、所有分支、tag
+          fetch-depth: 0
 
-      - name: Configure git credentials for Gitee
+      - name: Setup SSH for Gitee
         env:
           GITEE_PRIVATE_KEY: ${{ secrets.GITEE_PRIVATE_KEY }}
         run: |
@@ -24,14 +24,49 @@ jobs:
           echo "${GITEE_PRIVATE_KEY}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan gitee.com >> ~/.ssh/known_hosts
-          git config --global user.name "GitHub Mirror Bot"
-          git config --global user.email "muzinext@gmail.com"
+          git config --global user.name "Mirror‑Bot"
+          git config --global user.email "mirror@no-reply.local"
 
-      - name: Add Gitee remote target
+      - name: Add Gitee remote
         run: |
+          git remote remove gitee || true
           git remote add gitee git@gitee.com:muzinext/LanternPress.git
 
-      - name: Mirror push to Gitee
+      - name: Filter out .github directory & push branches
         run: |
-          git push --mirror gitee
+          # 获取所有本地分支列表 refs/heads/*
+          BRANCHES=$(git for-each-ref --format='%(refname)' refs/heads)
+          for ref in $BRANCHES; do
+            branch=${ref#refs/heads/}
+            # 在临时ref中移除 .github，不改动原始分支
+            git worktree add --detach ./tmp_worktree $branch
+            cd ./tmp_worktree
+            rm -rf .github
+            git add .
+            # 如果有变更，生成临时commit；无变更沿用原commit
+            if git diff --quiet --cached; then
+              TMP_COMMIT=$(git rev-parse HEAD)
+            else
+              TMP_COMMIT=$(git commit-tree HEAD^{tree} -p HEAD -m "mirror: drop .github folder for gitee mirror")
+            fi
+            cd ..
+            rm -rf ./tmp_worktree
+            # 推送过滤后的commit到Gitee对应分支
+            git push gitee ${TMP_COMMIT}:refs/heads/${branch} --force-with-lease
+          done
 
+      - name: Push tags (tags keep original commit, cannot filter folder)
+        run: |
+          git push gitee refs/tags/*:refs/tags/* --force
+
+      - name: Delete branches that no longer exist on GitHub
+        run: |
+          # 获取github本地所有分支名
+          LOCAL_BRANCHES=$(git for-each-ref --format='%(refname:short)' refs/heads)
+          # 获取gitee远端所有分支名
+          GITEE_BRANCHES=$(git ls-remote --heads gitee | awk '{print $2}' | sed 's/refs\/heads\///')
+          for gitee_br in $GITEE_BRANCHES; do
+            if ! echo "$LOCAL_BRANCHES" | grep -q "^${gitee_br}$"; then
+              git push gitee :${gitee_br} || true
+            fi
+          done
