@@ -333,5 +333,7 @@ A：备份当前主题目录 → 覆盖新版本文件 → 登录后台 → 外�
 本主题基于[LanternTown 主题](https://github.com/Yangsh888/LanternTown) 二次开发，遵循原始项目许可证。
 
 二次开发部分由[木子小鱼](https://muzihome.com)维护，欢迎提交 Issue 和 Pull Request。
+
 **项目地址：** [https://github.com/muzihome/LanternPress](https://github.com/muzihome/LanternPress)
+
 **备用地址：** [https://gitee.com/muzinext/LanternPress](https://gitee.com/muzinext/LanternPress)

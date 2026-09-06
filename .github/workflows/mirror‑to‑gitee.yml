@@ -1,4 +1,4 @@
-name: Mirror GitHub → Gitee (Pure Git exclude .github)
+name: Mirror-to-Gitee
 
 on:
   push:
@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout full history
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -36,7 +36,6 @@ jobs:
           git clone --no-local . ./filter_work
           cd ./filter_work
           git filter-repo --path .github --invert-paths --force
-          # 在临时仓库内部添加gitee remote
           git remote remove gitee || true
           git remote add gitee git@gitee.com:muzinext/LanternPress.git
           cd ..
