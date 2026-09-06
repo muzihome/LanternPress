@@ -1,4 +1,4 @@
-name: Mirror GitHub → Gitee (Pure Git, exclude .github folder)
+name: Mirror-to-Gitee
 
 on:
   push:
@@ -16,6 +16,10 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install git-filter-repo
+        run: |
+          python3 -m pip install git-filter-repo
+
       - name: Setup SSH for Gitee
         env:
           GITEE_PRIVATE_KEY: ${{ secrets.GITEE_PRIVATE_KEY }}
@@ -32,41 +36,33 @@ jobs:
           git remote remove gitee || true
           git remote add gitee git@gitee.com:muzinext/LanternPress.git
 
-      - name: Filter out .github directory & push branches
+      - name: Create temp clone & remove .github from whole history
         run: |
-          # 获取所有本地分支列表 refs/heads/*
-          BRANCHES=$(git for-each-ref --format='%(refname)' refs/heads)
-          for ref in $BRANCHES; do
-            branch=${ref#refs/heads/}
-            # 在临时ref中移除 .github，不改动原始分支
-            git worktree add --detach ./tmp_worktree $branch
-            cd ./tmp_worktree
-            rm -rf .github
-            git add .
-            # 如果有变更，生成临时commit；无变更沿用原commit
-            if git diff --quiet --cached; then
-              TMP_COMMIT=$(git rev-parse HEAD)
-            else
-              TMP_COMMIT=$(git commit-tree HEAD^{tree} -p HEAD -m "mirror: drop .github folder for gitee mirror")
-            fi
-            cd ..
-            rm -rf ./tmp_worktree
-            # 推送过滤后的commit到Gitee对应分支
-            git push gitee ${TMP_COMMIT}:refs/heads/${branch} --force-with-lease
-          done
+          git clone --no-local . ./filter_work
+          cd ./filter_work
+          git filter-repo --path .github --invert-paths --force
+          cd ..
 
-      - name: Push tags (tags keep original commit, cannot filter folder)
+      - name: Push filtered branches to Gitee
         run: |
+          cd ./filter_work
+          git push gitee refs/heads/*:refs/heads/* --force
+
+      - name: Push original tags (tags cannot filter files)
+        run: |
+          cd ./filter_work
           git push gitee refs/tags/*:refs/tags/* --force
 
-      - name: Delete branches that no longer exist on GitHub
+      - name: Prune branches deleted on GitHub
         run: |
-          # 获取github本地所有分支名
+          cd ./filter_work
           LOCAL_BRANCHES=$(git for-each-ref --format='%(refname:short)' refs/heads)
-          # 获取gitee远端所有分支名
           GITEE_BRANCHES=$(git ls-remote --heads gitee | awk '{print $2}' | sed 's/refs\/heads\///')
-          for gitee_br in $GITEE_BRANCHES; do
-            if ! echo "$LOCAL_BRANCHES" | grep -q "^${gitee_br}$"; then
-              git push gitee :${gitee_br} || true
+          for br in $GITEE_BRANCHES; do
+            if ! echo "$LOCAL_BRANCHES" | grep -q "^${br}$"; then
+              git push gitee :${br} || true
             fi
           done
+
+      - name: Clean temporary directory
+        run: rm -rf ./filter_work
