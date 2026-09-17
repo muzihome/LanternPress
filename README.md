@@ -307,9 +307,6 @@ A：备份当前主题目录 → 覆盖新版本文件 → 登录后台 → 外�
 
 ## 更新日志
 
-对外简版（仅版本号 / 日期 / 内容标题）请查看 [LOG.md](./LOG.md)；完整开发明细请查看 [CHANGELOG.md](./CHANGELOG.md)。
-
-**近期版本：**
 - **v2.3.0**：正式发布版——安全加固（点赞 CSRF、评论令牌、缓存格式加固）；首页轮播 4 秒自动 + 控制按钮悬停显示/离开消失；移动端文章页/独立页不再加载目录树；Web App Manifest 与主题图标；无障碍（跳转链接、键盘焦点、对比度、减弱动态效果）；内容文件缓存、列表查询优化、Prism 按需加载、LCP 优化、限流 GC；全站唯一 h1、结构化数据、归档描述、feed/搜索路由化；Typecho 1.3.0 与 PHP 8.2+ 适配
 - **v2.2.2**：热修版——首页轮播 resize 冻结兜底、卡片键盘委托守卫、克隆幻灯片懒加载、搜索页 noindex、部署脚本失败不写盘与 cache 运行时文件保护
 - **v2.2.1**：Typecho 1.3.0 规范与 PHP 8.2+ 全面审查修复（密码保护链路、三方言 upsert、安全响应头、搜索关键词取值等）
@@ -327,6 +324,8 @@ A：备份当前主题目录 → 覆盖新版本文件 → 登录后台 → 外�
 
 本主题基于原始作者 TypeRenew/Yangsh888 的 LanternTown 主题二次开发，遵循原始项目许可证。
 
-二次开发部分由木子小鱼维护，欢迎提交 Issue 和 Pull Request。
+二次开发部分由[木子小鱼](https://muzihome.com)维护，欢迎提交 Issue 和 Pull Request。
 
-**项目地址：** https://github.com/muzihome/LanternPress
+**项目地址：** [https://github.com/muzihome/LanternPress](https://github.com/muzihome/LanternPress)
+
+**备用地址：** [https://gitee.com/muzinext/LanternPress](https://gitee.com/muzinext/LanternPress)
