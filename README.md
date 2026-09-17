@@ -2,11 +2,13 @@
 
 一款经典报纸复古风 Typecho 主题，适配 PHP 8 与 MySQL 8。
 
-> 基于 LanternTown 二次开发
 > 作者：木子小鱼
+
 > 项目地址：https://github.com/muzihome/LanternPress
+
 > 当前版本：v2.3.0
-> 对外简版更新日志：[LOG.md](./LOG.md)　完整更新日志：[CHANGELOG.md](./CHANGELOG.md)
+
+> 更新日志：[LOG.md](./LOG.md)
 
 ---
 
