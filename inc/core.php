@@ -9,15 +9,22 @@ define('LT_MAX_REWARD_IMAGES', 2);
 define('LT_DEFAULT_EXCERPT_LENGTH', 130);
 define('LT_MAX_URL_LENGTH', 2048);
 
-define('LT_CSP_POLICY', "default-src 'self'; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https:; media-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'");
+define('LT_CSP_POLICY', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https:; media-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'");
 
-define('LT_THEME_VERSION', '2.3.0');
+define('LT_THEME_VERSION', '2.4.0');
 
-define('LT_ASSET_VERSION', '1.3.3');
+define('LT_ASSET_VERSION', '1.4.16');
 
 
 
-define('LT_CONTENT_CACHE_VERSION', '3');
+// 内容缓存结构版本：正文处理相关文件（core.php / functions.php / post.php / sidebar.php）任一变更即自动派生新版本，
+// 全站正文缓存一次性失效并重建——替代发布时手动递增 LT_CONTENT_CACHE_VERSION（避免遗漏导致旧缓存串新逻辑）
+$ltContentCacheFiles = [__FILE__, dirname(__DIR__) . '/functions.php', dirname(__DIR__) . '/post.php', dirname(__DIR__) . '/sidebar.php'];
+$ltContentCacheSig = '';
+foreach ($ltContentCacheFiles as $ltContentCacheFile) {
+    $ltContentCacheSig .= (string) @filemtime($ltContentCacheFile);
+}
+define('LT_CONTENT_CACHE_VERSION', '3-' . substr(md5($ltContentCacheSig), 0, 8));
 
 function lt_text(mixed $value, string $default = ''): string
 {
@@ -116,9 +123,9 @@ function lt_safe_url(string $url): string
         return '';
     }
 
-    
+
     $stripped = preg_replace('/[\x00-\x1F\x7F]/u', '', $url);
-    
+
     return $stripped === null ? '' : $stripped;
 }
 
@@ -174,41 +181,68 @@ function lt_esc_html(string $value): string
     return htmlspecialchars($value, ENT_QUOTES | ENT_HTML5, 'UTF-8', true);
 }
 
+/**
+ * 评论内容安全渲染：白名单保留常用 HTML，清洗事件属性 / style / 危险协议。
+ * 替代全量转义（lt_esc_html），使 Typecho 允许的安全标签正常渲染且不引入 XSS。
+ */
+function lt_safe_comment_html(string $text): string
+{
+    // 整块移除危险标签及其内容（script/style/iframe/object/embed/form/noscript/template）
+    $text = (string) preg_replace('#<(script|style|iframe|object|embed|form|noscript|template)\b[^>]*>.*?</\1\s*>#is', '', $text);
+    // 白名单保留常用 HTML 标签（Typecho 允许的安全标签范围）
+    $text = strip_tags($text, '<p><br><a><strong><em><u><s><code><pre><blockquote><ul><ol><li><img><span><h1><h2><h3><h4><h5><h6>');
+    // 清洗事件属性 on*（onclick / onerror / onload 等）与 style
+    $text = (string) preg_replace('/\son[a-z]+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $text);
+    $text = (string) preg_replace('/\sstyle\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $text);
+    // a[href] / img[src] 仅允许 http(s) / mailto / # 锚点 / 相对路径，其余危险协议替换为 "#"
+    $text = (string) preg_replace_callback(
+        '/(<(?:a|img)\b[^>]*?(?:href|src)\s*=\s*)(["\'])(.*?)\2/i',
+        static function (array $m): string {
+            $url = trim((string) ($m[3] ?? ''));
+            if ($url !== '' && !preg_match('~^(?:https?://|mailto:|#|/|\.{1,2}/)[^"\']*$~i', $url)) {
+                return $m[1] . '"#"';
+            }
+            return $m[0];
+        },
+        $text
+    );
+    return $text;
+}
+
 function lt_esc_attr(string $value): string
 {
-    
+
     return lt_esc_html($value);
 }
 
 function lt_icon(string $name): string
 {
-    
+
     static $icons = null;
     if ($icons === null) {
-    $icons = [
-        'grid' => '<svg viewBox="0 0 1026 1024" aria-hidden="true"><path d="M392.169 373.756 151.421 373.756c-7.911 0-14.279 6.389-14.279 14.28 0 7.851 6.368 14.24 14.279 14.24L392.17 402.276c7.851 0 14.24-6.388 14.24-14.24C406.409 380.146 400.021 373.756 392.169 373.756zM392.169 491.098 151.421 491.098c-7.911 0-14.279 6.408-14.279 14.278 0 7.892 6.368 14.261 14.279 14.261L392.17 519.637c7.851 0 14.24-6.368 14.24-14.261C406.409 497.505 400.021 491.098 392.169 491.098zM392.169 608.479 151.421 608.479c-7.911 0-14.279 6.406-14.279 14.276 0 7.873 6.368 14.261 14.279 14.261L392.17 637.016c7.851 0 14.24-6.388 14.24-14.261C406.409 614.885 400.021 608.479 392.169 608.479zM618.357 388.036c0 7.851 6.367 14.24 14.24 14.24l240.746 0c7.892 0 14.261-6.388 14.261-14.24 0-7.89-6.367-14.28-14.261-14.28L632.599 373.756C624.728 373.756 618.357 380.146 618.357 388.036zM873.347 491.098 632.599 491.098c-7.872 0-14.24 6.408-14.24 14.278 0 7.892 6.368 14.261 14.24 14.261l240.748 0c7.89 0 14.259-6.368 14.259-14.261C887.604 497.505 881.237 491.098 873.347 491.098zM873.347 608.479 632.599 608.479c-7.872 0-14.24 6.406-14.24 14.276 0 7.873 6.368 14.261 14.24 14.261l240.748 0c7.89 0 14.259-6.388 14.259-14.261C887.604 614.885 881.237 608.479 873.347 608.479zM751.301 132.346c-88.362 0-187.057 13.519-238.526 48.247-51.472-34.728-150.145-48.247-238.526-48.247-126.493 0-274.174 27.64-274.174 105.605l0 622.81c0 10.554 4.645 20.487 12.696 27.258 8.051 6.77 18.666 9.652 29.039 7.849 70.136-12.133 150.486-18.545 232.437-18.545 81.953 0 162.302 6.41 232.439 18.545 0.96 0.182 1.901 0.182 2.863 0.282 0.76 0.06 1.5 0.119 2.262 0.141 0.319 0.039 0.643 0.099 0.963 0.099 1.902 0 3.805-0.16 5.688-0.5 0.119-0.022 0.238 0 0.399-0.022 70.139-12.133 150.488-18.545 232.441-18.545 81.949 0 162.32 6.41 232.437 18.545 2.025 0.361 4.084 0.521 6.087 0.521 8.331 0 16.463-2.903 22.949-8.37 8.054-6.771 12.699-16.702 12.699-27.258L1025.474 237.951C1025.474 159.984 877.791 132.346 751.301 132.346zM71.371 819.203 71.371 242.457c0-51.472 108.312-76.815 239.877-76.815 88.362 0 177.312 10.655 226.795 37.786l0 576.746c-49.483-27.131-138.433-37.786-226.795-37.786C179.683 742.388 71.371 767.731 71.371 819.203zM954.103 819.203c0-51.472-108.312-76.815-239.877-76.815-88.362 0-177.312 10.655-226.795 37.786L487.431 203.428c49.483-27.131 138.433-37.786 226.795-37.786 131.565 0 239.877 25.343 239.877 76.815L954.103 819.203z"></path></svg>',
-        'search' => '<svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M873.6 842.9L716 685.4c28-29.2 50.2-62.9 66-100.1 17.3-40.8 26-84.1 26-128.7s-8.7-87.9-26-128.7c-16.7-39.4-40.5-74.7-70.9-105.1s-65.7-54.2-105.1-70.9c-40.8-17.3-84.1-26-128.7-26s-87.9 8.7-128.7 26c-39.4 16.7-74.7 40.5-105.1 70.9s-54.2 65.7-70.9 105.1c-17.3 40.8-26 84.1-26 128.7s8.7 87.9 26 128.7c16.7 39.4 40.5 74.7 70.9 105.1s65.7 54.2 105.1 70.9c40.8 17.3 84.1 26 128.7 26s87.9-8.7 128.7-26c21.7-9.2 42.2-20.6 61.4-34.1l161 161c12.4 12.4 32.8 12.4 45.2 0 12.4-12.5 12.4-32.8 0-45.3zM477.3 723.2c-71.2 0-138.2-27.7-188.6-78.1-50.4-50.4-78.1-117.3-78.1-188.6s27.7-138.2 78.1-188.6c50.4-50.4 117.3-78.1 188.6-78.1 71.2 0 138.2 27.7 188.6 78.1 50.4 50.4 78.1 117.3 78.1 188.6s-27.7 138.2-78.1 188.6c-50.4 50.4-117.4 78.1-188.6 78.1z"></path></svg>',
-        'left' => '<svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M469.749538 512 737.1371 962.254727 286.863924 512 737.1371 61.745273Z"></path></svg>',
-        'right' => '<svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M554.250462 512 286.863924 61.745273 737.1371 512 286.863924 962.254727Z"></path></svg>',
-        'mail' => '<svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M993.882353 271.058824l-481.882353 240.941176-481.882353-240.941176v-120.470589h963.764706v120.470589z"></path><path d="M30.117647 331.294118v542.117647h963.764706v-542.117647l-481.882353 240.941176-481.882353-240.941176z"></path></svg>',
-        'reward' => '<svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M486.4 486.4v102.4H341.3504c-18.8928 0-34.1504 11.4688-34.1504 25.6s15.2576 25.6 34.1504 25.6H486.4v117.76c0 19.8144 11.4688 35.84 25.6 35.84s25.6-16.0256 25.6-35.84v-117.76h145.0496c18.8928 0 34.1504-11.4688 34.1504-25.6s-15.2576-25.6-34.1504-25.6H537.6v-102.4h145.0496c18.8928 0 34.1504-11.4688 34.1504-25.6s-15.2576-25.6-34.1504-25.6h-134.4512l135.5264-135.4752a25.6 25.6 0 1 0-36.2496-36.2496L512 399.0016 376.5248 263.4752a25.6 25.6 0 1 0-36.2496 36.2496L475.8016 435.2H341.3504C322.4576 435.2 307.2 446.6688 307.2 460.8s15.2576 25.6 34.1504 25.6H486.4zM512 1024C229.2224 1024 0 794.7776 0 512S229.2224 0 512 0s512 229.2224 512 512-229.2224 512-512 512z"></path></svg>',
-        'close' => '<svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M571.01312 523.776l311.3472-311.35232c15.7184-15.71328 15.7184-41.6256 0-57.344l-1.69472-1.69984c-15.7184-15.71328-41.6256-15.71328-57.34912 0l-311.3472 311.77728-311.35232-311.77728c-15.7184-15.71328-41.63072-15.71328-57.344 0l-1.69984 1.69984a40.0128 40.0128 0 0 0 0 57.344L452.92544 523.776l-311.35232 311.35744c-15.71328 15.71328-15.71328 41.63072 0 57.33888l1.69984 1.69984c15.71328 15.7184 41.6256 15.7184 57.344 0l311.35232-311.35232 311.3472 311.35232c15.72352 15.7184 41.63072 15.7184 57.34912 0l1.69472-1.69984c15.7184-15.70816 15.7184-41.6256 0-57.33888l-311.3472-311.35744z"></path></svg>',
-        'weixin' => '<svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M308.73856 119.23456C23.65696 170.15296-71.37024 492.23936 155.392 639.66464c12.43392 7.99232 12.43392 7.104-6.21824 62.76096l-15.98464 47.65952 57.43104-30.784 57.43104-30.78656 30.49216 7.40096c31.96928 7.99232 72.82432 13.61664 100.0576 13.61664l16.28416 0-5.62688-21.61152c-44.70016-164.5952 109.82912-327.71072 310.8352-327.71072l27.2384 0-5.62432-19.53792C677.59616 186.43456 491.392 86.67136 308.73856 119.23456zM283.87072 263.40352c30.1952 20.4288 31.97184 64.5376 2.95936 83.48416-47.06816 30.78656-102.1312-23.38816-70.45632-69.57056C230.28736 256.59648 263.74144 249.78688 283.87072 263.40352zM526.62016 263.40352c49.73568 33.45408 12.43392 110.71744-43.22304 89.40288-40.25856-15.39328-44.99712-70.75072-7.40096-90.5856C490.79808 254.22848 513.88928 254.81984 526.62016 263.40352zM636.44928 385.37216c-141.2096 25.7536-239.19872 132.91776-233.57184 256.06656 7.40096 164.89472 200.71168 278.56896 386.32448 227.65312l21.90592-5.92128 46.1824 24.8704c25.4592 13.9136 46.77376 23.97696 47.36512 22.79168 0.59392-1.47968-4.43648-19.24352-10.95168-39.6672-14.79936-45.59104-15.09632-42.33472 4.73856-56.54272C1121.64864 654.464 925.67552 332.97408 636.44928 385.37216zM630.82496 518.28992c12.4288 8.28928 18.944 29.01248 13.61408 44.1088-11.24864 32.26624-59.49952 34.63424-72.52992 3.55328C557.10976 530.13248 597.9648 496.97536 630.82496 518.28992zM828.57472 521.84576c19.53792 18.64704 16.2816 50.32448-6.51264 62.16448-34.93376 17.76128-71.63904-17.76128-53.58336-51.80416C780.32128 510.2976 810.81344 504.97024 828.57472 521.84576z"></path></svg>',
-        'weibo' => '<svg viewBox="0 0 1025 1024" aria-hidden="true"><path d="M690.325333 102.848c-13.802667 2.453333-44.629333 14.293333-44.885333 39.808-0.256 25.493333 27.050667 42.133333 40.832 43.413333 50.88 0 294.208-13.205333 249.706667 221.568-6.165333 25.749333-10.88 65.173333 19.669333 73.472 27.754667 6.976 44.885333-22.016 52.586667-44.096C1011.925333 411.328 1124.458667 74.858667 690.325333 102.848zM753.621333 495.786667c0 0-51.008 11.029333-26.88-26.922667 37.888-74.218667-23.786667-196.010667-183.658667-115.072-55.082667 29.354667-55.082667 8.554667-53.248-28.16 4.949333-200.469333-366.634667-57.536-471.914667 203.114667C-41.429333 686.912 53.632 823.552 200.682667 883.2c358.933333 128.128 620.266667-83.904 664.810667-220.949333C924.906667 456.32 753.621333 495.786667 753.621333 495.786667zM409.429333 835.797333c-169.898667 23.338667-320.490667-51.328-336.426667-166.677333-15.850667-115.413333 108.992-227.946667 278.890667-251.285333 169.898667-23.36 320.469333 51.242667 336.405333 166.656C704.170667 699.882667 579.285333 812.330667 409.429333 835.797333zM834.624 435.349333c17.088 4.266667 23.744-9.749333 25.621333-22.549333 1.749333-12.8 31.253333-186.325333-158.250667-166.314667-14.336 1.578667-24 10.154667-22.336 22.741333 1.578667 12.608 12.202667 19.669333 20.288 18.709333 8.085333-0.938667 134.656-23.125333 124.288 110.250667C826.133333 410.325333 817.6 431.082667 834.624 435.349333zM354.069333 498.624c-88.554667 16.981333-149.461333 87.744-135.978667 158.08 13.482667 70.336 96.256 113.536 184.853333 96.533333 88.576-16.96 149.418667-87.744 135.978667-158.037333C525.376 524.885333 442.666667 481.642667 354.069333 498.624z"></path></svg>',
-        'bilibili' => '<svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M777.514667 131.669333a53.333333 53.333333 0 0 1 0 75.434667L728.746667 255.829333h49.92A160 160 0 0 1 938.666667 415.872v320a160 160 0 0 1-160 160H245.333333A160 160 0 0 1 85.333333 735.872v-320a160 160 0 0 1 160-160h49.749334L246.4 207.146667a53.333333 53.333333 0 1 1 75.392-75.434667l113.152 113.152c3.370667 3.370667 6.186667 7.04 8.448 10.965333h137.088c2.261333-3.925333 5.12-7.68 8.490667-11.008l113.109333-113.152a53.333333 53.333333 0 0 1 75.434667 0z m1.152 231.253334H245.333333a53.333333 53.333333 0 0 0-53.205333 49.365333l-0.128 4.010667v320c0 28.117333 21.76 51.157333 49.365333 53.162666l3.968 0.170667h533.333334a53.333333 53.333333 0 0 0 53.205333-49.365333l0.128-3.968v-320c0-29.44-23.893333-53.333333-53.333333-53.333334z m-426.666667 106.666666c29.44 0 53.333333 23.893333 53.333333 53.333334v53.333333a53.333333 53.333333 0 1 1-106.666666 0v-53.333333c0-29.44 23.893333-53.333333 53.333333-53.333334z m320 0c29.44 0 53.333333 23.893333 53.333333 53.333334v53.333333a53.333333 53.333333 0 1 1-106.666666 0v-53.333333c0-29.44 23.893333-53.333333 53.333333-53.333334z"></path></svg>',
-        'github' => '<svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M512 85.333333C276.266667 85.333333 85.333333 276.266667 85.333333 512a426.410667 426.410667 0 0 0 291.754667 404.821333c21.333333 3.712 29.312-9.088 29.312-20.309333 0-10.112-0.554667-43.690667-0.554667-79.445333-107.178667 19.754667-134.912-26.112-143.445333-50.133334-4.821333-12.288-25.6-50.133333-43.733333-60.288-14.933333-7.978667-36.266667-27.733333-0.554667-28.245333 33.621333-0.554667 57.6 30.933333 65.621333 43.733333 38.4 64.512 99.754667 46.378667 124.245334 35.2 3.754667-27.733333 14.933333-46.378667 27.221333-57.045333-94.933333-10.666667-194.133333-47.488-194.133333-210.688 0-46.421333 16.512-84.778667 43.733333-114.688-4.266667-10.666667-19.2-54.4 4.266667-113.066667 0 0 35.712-11.178667 117.333333 43.776a395.946667 395.946667 0 0 1 106.666667-14.421333c36.266667 0 72.533333 4.778667 106.666666 14.378667 81.578667-55.466667 117.333333-43.690667 117.333334-43.690667 23.466667 58.666667 8.533333 102.4 4.266666 113.066667 27.178667 29.866667 43.733333 67.712 43.733334 114.645333 0 163.754667-99.712 200.021333-194.645334 210.688 15.445333 13.312 28.8 38.912 28.8 78.933333 0 57.045333-0.554667 102.912-0.554666 117.333334 0 11.178667 8.021333 24.490667 29.354666 20.224A427.349333 427.349333 0 0 0 938.666667 512c0-235.733333-190.933333-426.666667-426.666667-426.666667z"></path></svg>',
-        'zhihu' => '<svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-512S759.4 64 512 64z m-90.7 477.8l-0.1 1.5c-1.5 20.4-6.3 43.9-12.9 67.6l24-18.1 71 80.7c9.2 33-3.3 63.1-3.3 63.1l-95.7-111.9v-0.1c-8.9 29-20.1 57.3-33.3 84.7-22.6 45.7-55.2 54.7-89.5 57.7-34.4 3-23.3-5.3-23.3-5.3 68-55.5 78-87.8 96.8-123.1 11.9-22.3 20.4-64.3 25.3-96.8H264.1s4.8-31.2 19.2-41.7h101.6c0.6-15.3-1.3-102.8-2-131.4h-49.4c-9.2 45-41 56.7-48.1 60.1-7 3.4-23.6 7.1-21.1 0 2.6-7.1 27-46.2 43.2-110.7 16.3-64.6 63.9-62 63.9-62-12.8 22.5-22.4 73.6-22.4 73.6h159.7c10.1 0 10.6 39 10.6 39h-90.8c-0.7 22.7-2.8 83.8-5 131.4H519s12.2 15.4 12.2 41.7H421.3z m346.5 167h-87.6l-69.5 46.6-16.4-46.6h-40.1V321.5h213.6v387.3z"></path></svg>',
-        'link' => '<svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M96 160h832c17.673 0 32 14.327 32 32v640c0 17.673-14.327 32-32 32H96c-17.673 0-32-14.327-32-32V192c0-17.673 14.327-32 32-32z m40 64a8 8 0 0 0-8 8v560a8 8 0 0 0 8 8h752a8 8 0 0 0 8-8V232a8 8 0 0 0-8-8H136z"></path></svg>',
-        'backtop' => '<svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M512 170.666667c9.6 0 18.773333 3.626667 25.813334 10.666666l268.8 268.8c14.293333 14.293333 14.293333 37.44 0 51.733334-14.293333 14.293333-37.44 14.293333-51.733334 0L554.666667 301.653333V832c0 20.181333-16.341333 36.565333-36.565334 36.565333-20.181333 0-36.565333-16.341333-36.565333-36.565333V301.696l-200.106666 200.149333c-14.293333 14.293333-37.44 14.293333-51.733334 0-14.293333-14.293333-14.293333-37.44 0-51.733333l268.8-268.8A36.48 36.48 0 0 1 512 170.666667z"></path></svg>'
-    ];
+        $icons = [
+            'grid' => 'category',
+            'search' => 'search',
+            'left' => 'arrowleft',
+            'right' => 'arrowright',
+            'mail' => 'email',
+            'close' => 'close',
+            'weixin' => 'weixin',
+            'weibo' => 'weibo',
+            'bilibili' => 'bilibili',
+            'github' => 'github',
+            'zhihu' => 'zhihu',
+            'link' => 'copylink',
+            'reward' => 'reward',
+            'backtop' => 'arrowup',
+        ];
     }
 
-    
     static $aliasMap = ['wechat' => 'weixin', 'email' => 'mail'];
     $key = strtolower(trim($name));
     $key = $aliasMap[$key] ?? $key;
-    $svg = $icons[$key] ?? $icons['link'];
-    return '<span class="svg-icon" aria-hidden="true">' . $svg . '</span>';
+    $cls = $icons[$key] ?? $icons['link'];
+    return '<i class="lt-icon icon-' . $cls . '" aria-hidden="true"></i>';
 }
 
 function lt_parse_avatar(mixed $mail): string
@@ -227,7 +261,7 @@ function lt_parse_avatar(mixed $mail): string
             $proxy = trim(lt_text(\Typecho\Widget::widget('\Widget\Options')->avatarProxy ?? ''));
         }
         if ($proxy !== '') {
-            
+
             $hash = md5(strtolower($mail));
             $candidate = rtrim($proxy, '/') . '/' . $hash . '?s=100&r=G&d=mm';
             $url = lt_safe_url($candidate);
@@ -242,14 +276,14 @@ function lt_parse_avatar(mixed $mail): string
         $url = $fallback;
     }
 
-    
+
     return lt_esc_attr($url);
 }
 
 function getReply(int $parent, string $content): string
 {
-    
-    $contentText = nl2br(lt_esc_html(trim($content)), false);
+
+    $contentText = nl2br(lt_safe_comment_html(trim($content)), false);
 
     if ($parent <= 0) {
         return $contentText;
@@ -277,7 +311,7 @@ function getReply(int $parent, string $content): string
 
 function getThumb(object $archive, object $options, ?string $bannerOverride = null): string
 {
-    
+
     $banner = lt_text($bannerOverride ?? ($archive->fields->bannerUrl ?? ''));
     if ($banner !== '') {
         return lt_safe_url($banner);
@@ -288,15 +322,15 @@ function getThumb(object $archive, object $options, ?string $bannerOverride = nu
 
 function lt_content_image(string $content): string
 {
-    
-    
+
+
     if (preg_match('/<img[^>]+src=["\']([^"\']+)["\'][^>]*>/i', $content, $matches)) {
         $url = lt_safe_url((string) ($matches[1] ?? ''));
         if ($url !== '') {
             return $url;
         }
     }
-    
+
     if (preg_match('/!\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/i', $content, $matches)) {
         return lt_safe_url((string) ($matches[1] ?? ''));
     }
@@ -308,7 +342,7 @@ function loadThumb(string $content, object $options, int $cid = 0): string
 {
     $thumbs = lt_lines($options->indexThumbs ?? '');
     if (!empty($thumbs)) {
-        
+
         $thumb = $thumbs[$cid % count($thumbs)];
         return lt_safe_url($thumb);
     }
@@ -322,17 +356,18 @@ function loadThumb(string $content, object $options, int $cid = 0): string
     return lt_safe_url($defaultThumb);
 }
 
-function lt_render_post_link(array $content, object $options, string $text, string $thumb): string
+function lt_render_post_link(array $content, object $options, string $text, string $thumb, bool $isNext = false): string
 {
     $permalink = lt_safe_url(lt_text($content['permalink'] ?? ''));
     $title = lt_text($content['title'] ?? '');
-    $thumb = lt_safe_url($thumb);
 
     if ($permalink === '' || $title === '') {
         return '';
     }
 
-    return '<a href="' . lt_esc_attr($permalink) . '" title="' . lt_esc_attr($title) . '"><div><div>' . lt_esc_html($title) . '</div><div>' . lt_esc_html($text) . '</div></div><img src="' . lt_esc_attr($thumb) . '"/></a>';
+    return '<a href="' . lt_esc_attr($permalink) . '" class="nav-card ' . ($isNext ? 'nav-next' : 'nav-prev') . '" title="' . lt_esc_attr($title) . '">'
+        . '<span class="nav-dir">' . ($isNext ? '下一篇' : '上一篇') . '</span>'
+        . '<span class="nav-title">' . lt_esc_html($title) . '</span></a>';
 }
 
 
@@ -345,7 +380,7 @@ function lt_prev_next(object $widget, object $options, string $direction): strin
     try {
         $isNext = $direction === 'next';
         $db = \Typecho\Db::get();
-        
+
         $select = $db->select()->from('table.contents');
         if ($isNext) {
             $select->where('(table.contents.created > ? OR (table.contents.created = ? AND table.contents.cid > ?))', (int) $widget->created, (int) $widget->created, (int) $widget->cid);
@@ -366,20 +401,13 @@ function lt_prev_next(object $widget, object $options, string $direction): strin
         }
 
         $row = $widget->filter($row);
-
-        $field = $db->fetchRow(
-            $db->select('value')
-                ->from('table.fields')
-                ->where('cid = ? AND name = ?', (int) $row['cid'], 'bannerUrl')
-                ->limit(1)
+        $row['permalink'] = \Typecho\Common::url(
+            \Typecho\Router::url(($row['type'] ?? 'post') === 'page' ? 'page' : 'post', $row),
+            (string) $options->index
         );
-        $banner = trim(lt_text($field['value'] ?? ''));
-        $thumb = $banner !== '' ? lt_safe_url($banner) : lt_content_image(lt_text($row['content'] ?? ''));
-        if ($thumb === '') {
-            $thumb = rtrim((string) $options->themeUrl, '/') . '/assets/img/blog_bg.jpg';
-        }
 
-        return lt_render_post_link($row, $options, $isNext ? '下一篇' : '上一篇', $thumb);
+        // 简化样式无需缩略图，直接渲染方向标签 + 标题
+        return lt_render_post_link($row, $options, $isNext ? '下一篇' : '上一篇', '', $isNext);
     } catch (\Throwable $e) {
         lt_log_error('lt_prev_next failed direction=' . $direction, $e);
         return '';
@@ -394,9 +422,9 @@ function lt_send_security_headers(): void
     header('X-Content-Type-Options: nosniff');
     header('X-Frame-Options: SAMEORIGIN');
     header('Referrer-Policy: strict-origin-when-cross-origin');
-    
+
     header('Content-Security-Policy: ' . LT_CSP_POLICY);
-    
+
     if (lt_is_https()) {
         header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
     }
@@ -424,7 +452,7 @@ function lt_log_error(string $message, ?\Throwable $e = null): void
         }
         error_log($logMsg);
     } catch (\Throwable $e) {
-        
+
     }
 }
 
@@ -485,7 +513,7 @@ function lt_field_upsert(
     $strQuoted = $hasQuote ? $adapter->quote($strValue) : "'" . addslashes($strValue) . "'";
     $intValueQuoted = (string) (int) $intValueRaw;
 
-    
+
     $isPgOrSQLite = stripos($adapterClass, 'Pgsql') !== false
         || stripos($adapterClass, 'SQLite') !== false;
 
@@ -505,7 +533,7 @@ function lt_field_upsert(
             $sets[] = "\"str_value\" = {$updateStrQuoted}";
         }
         if (empty($sets)) {
-            
+
             $sql = "INSERT INTO \"{$table}\" (\"cid\", \"name\", \"type\", \"int_value\", \"str_value\", \"float_value\") "
                  . "VALUES ({$cid}, {$nameQuoted}, '{$type}', {$intValueQuoted}, {$strQuoted}, {$floatValue}) "
                  . "ON CONFLICT (\"cid\", \"name\") DO NOTHING";
@@ -513,7 +541,7 @@ function lt_field_upsert(
             $sql .= implode(', ', $sets);
         }
     } else {
-        
+
         $sql = "INSERT INTO `{$table}` (`cid`, `name`, `type`, `int_value`, `str_value`, `float_value`) "
              . "VALUES ({$cid}, {$nameQuoted}, '{$type}', {$intValueQuoted}, {$strQuoted}, {$floatValue}) "
              . "ON DUPLICATE KEY UPDATE ";
@@ -542,7 +570,7 @@ function lt_get_field_int(int $cid, string $name): int
     if ($cid <= 0 || $name === '') {
         return 0;
     }
-    
+
     $cached = lt_field_cache($cid, $name);
     if ($cached !== null) {
         return $cached;
@@ -571,9 +599,9 @@ function lt_set_field_int(int $cid, string $name, int $value): void
     }
     try {
         $db = \Typecho\Db::get();
-        
+
         lt_field_upsert($db, $cid, $name, 'int', (string) $value, '0', 0, $value);
-        
+
         lt_field_cache($cid, $name, $value);
     } catch (\Throwable $e) {
         lt_log_error('lt_set_field_int upsert failed cid=' . $cid . ' name=' . $name . ' value=' . $value, $e);
@@ -589,9 +617,9 @@ function lt_atomic_increment_field(int $cid, string $name, int $step = 1): int
     }
     try {
         $db = \Typecho\Db::get();
-        
+
         lt_field_upsert($db, $cid, $name, 'int', (string) $step, '', 0, null, $step, null);
-        
+
         $row = $db->fetchRow(
             $db->select('int_value')
                 ->from('table.fields')
@@ -611,8 +639,8 @@ function lt_atomic_increment_field(int $cid, string $name, int $step = 1): int
 
 function lt_get_field_str(int $cid, string $name): ?string
 {
-    
-    
+
+
     static $queried = [];
     $cacheKey = $cid . '|' . $name;
 
@@ -620,7 +648,7 @@ function lt_get_field_str(int $cid, string $name): ?string
         return null;
     }
 
-    
+
     if (isset($queried[$cacheKey])) {
         $cached = lt_field_cache($cid, $name);
         return is_string($cached) ? $cached : null;
@@ -654,15 +682,15 @@ function lt_set_field_str(int $cid, string $name, string $value): void
     if ($cid <= 0 || $name === '') {
         return;
     }
-    
-    
+
+
     if (strlen($value) > 60000) {
         lt_log_error('lt_set_field_str value too large cid=' . $cid . ' name=' . $name . ' length=' . strlen($value), null);
         return;
     }
     try {
         $db = \Typecho\Db::get();
-        
+
         lt_field_upsert($db, $cid, $name, 'str', '0', $value, 0.0, null, null, $value);
         lt_field_cache($cid, $name, $value);
     } catch (\Throwable $e) {
@@ -717,7 +745,7 @@ function lt_content_cache_dir(): string
             return $dir;
         }
     }
-    
+
     $htaccess = $dir . '/.htaccess';
     if (!is_file($htaccess)) {
         @file_put_contents(
@@ -799,11 +827,15 @@ function lt_increment_views(int $cid): void
     if (!empty($_COOKIE[$cookieName])) {
         return;
     }
-    
+    // IP 限频：同一 IP 60 秒内仅计一次，防清除 cookie 后反复刷量
+    if (!lt_check_rate_limit('views_' . $cid . '_' . lt_get_client_ip(), 1, 60)) {
+        return;
+    }
+
     lt_atomic_increment_field($cid, 'ltViews');
     if (!headers_sent()) {
-        
-        
+
+
         setcookie($cookieName, '1', time() + 86400, '/', '', lt_is_https(), true);
     }
 }
@@ -814,8 +846,8 @@ function lt_get_client_ip(): string
 {
     $remoteAddr = !empty($_SERVER['REMOTE_ADDR']) ? trim((string) $_SERVER['REMOTE_ADDR']) : '';
 
-    
-    
+
+
     $trustedProxies = defined('LT_TRUSTED_PROXY_IPS') ? LT_TRUSTED_PROXY_IPS : null;
     $isTrustedProxy = false;
 
@@ -827,8 +859,8 @@ function lt_get_client_ip(): string
             $isTrustedProxy = in_array($remoteAddr, $list, true);
         }
     } else {
-        
-        
+
+
         $isTrustedProxy = false;
     }
 
@@ -841,7 +873,7 @@ function lt_get_client_ip(): string
         }
     }
 
-    
+
     if ($ip === '') {
         $ip = $remoteAddr;
     }
@@ -863,7 +895,7 @@ function lt_rate_limit_gc(string $cacheDir): void
             }
         }
     } catch (\Throwable $e) {
-        
+
     }
 }
 
@@ -872,13 +904,18 @@ function lt_check_rate_limit(string $key, int $maxRequests, int $windowSeconds):
     if ($maxRequests <= 0 || $windowSeconds <= 0) {
         return true;
     }
+    // 无效来源 IP（lt_get_client_ip 兜底 'unknown'）无法区分用户，追加 UA 指纹作隔离维度，
+    // 避免不同无效 IP 访问者共享同一限频窗口互相影响（点赞/视图/一年一次窗口均受益）
+    if (str_contains($key, 'unknown')) {
+        $key .= '|ua:' . md5((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''));
+    }
     $cacheDir = __DIR__ . '/cache';
     $cacheFile = $cacheDir . '/rate_limit_' . md5($key) . '.php';
     $now = time();
     $records = [];
     $allowed = true;
 
-    
+
     if (mt_rand(1, 100) === 1) {
         lt_rate_limit_gc($cacheDir);
     }
@@ -887,17 +924,17 @@ function lt_check_rate_limit(string $key, int $maxRequests, int $windowSeconds):
         if (!is_dir($cacheDir)) {
             @mkdir($cacheDir, 0755, true);
         }
-        
+
         $fp = @fopen($cacheFile, 'c+');
         if ($fp === false) {
-            
+
             if (is_file($cacheFile)) {
                 $data = @file_get_contents($cacheFile);
                 if ($data !== false && strpos($data, '<?php exit; ?>') === 0) {
                     $encoded = substr($data, strlen('<?php exit; ?>'));
                     $decoded = json_decode($encoded, true);
                     if (!is_array($decoded)) {
-                        
+
                         $decoded = @unserialize($encoded);
                     }
                     if (is_array($decoded)) {
@@ -916,20 +953,20 @@ function lt_check_rate_limit(string $key, int $maxRequests, int $windowSeconds):
             return true;
         }
 
-        
+
         if (!@flock($fp, LOCK_EX | LOCK_NB)) {
             @fclose($fp);
-            return true; 
+            return true;
         }
 
-        
+
         rewind($fp);
         $data = stream_get_contents($fp);
         if ($data !== false && strpos($data, '<?php exit; ?>') === 0) {
             $encoded = substr($data, strlen('<?php exit; ?>'));
             $decoded = json_decode($encoded, true);
             if (!is_array($decoded)) {
-                
+
                 $decoded = @unserialize($encoded);
             }
             if (is_array($decoded)) {
@@ -937,15 +974,15 @@ function lt_check_rate_limit(string $key, int $maxRequests, int $windowSeconds):
             }
         }
 
-        
+
         $records = array_values(array_filter($records, static fn($ts) => ($now - $ts) < $windowSeconds));
 
-        
+
         if (count($records) >= $maxRequests) {
             $allowed = false;
         } else {
             $records[] = $now;
-            
+
             ftruncate($fp, 0);
             rewind($fp);
             @fwrite($fp, '<?php exit; ?>' . json_encode($records));
@@ -954,7 +991,7 @@ function lt_check_rate_limit(string $key, int $maxRequests, int $windowSeconds):
         @flock($fp, LOCK_UN);
         @fclose($fp);
     } catch (\Throwable $e) {
-        
+
         return true;
     }
 
@@ -982,11 +1019,16 @@ function lt_increment_likes(int $cid): int
     if (!empty($_COOKIE[$cookieName])) {
         return lt_get_likes($cid);
     }
-    
+    // IP 一次去重（1 年窗口）：清 cookie 后同 IP 不可重复刷赞
+    $ltLikeIp = lt_get_client_ip();
+    if ($ltLikeIp !== '' && !lt_check_rate_limit('like_once_' . $cid . '_' . $ltLikeIp, 1, 31536000)) {
+        return lt_get_likes($cid);
+    }
+
     $newValue = lt_atomic_increment_field($cid, 'ltLikes');
     if (!headers_sent()) {
-        
-        
+
+
         setcookie($cookieName, '1', time() + 31536000, '/', '', lt_is_https(), true);
     }
     return $newValue;

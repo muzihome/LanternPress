@@ -1,15 +1,9 @@
 <?php
-
-
-
-
-
 declare(strict_types=1);
 
 if (!defined('__TYPECHO_ROOT_DIR__')) exit;
 
-$this->need('partials/header.php');
-
+$this->need('header.php');
 
 $tagCloud = [];
 try {
@@ -17,9 +11,8 @@ try {
     $rows = $db->fetchAll(
         $db->select('table.metas.mid', 'table.metas.name', 'table.metas.slug', 'COUNT(table.relationships.cid) AS cnt')
             ->from('table.metas')
-            ->join('table.relationships', 'table.metas.mid = table.relationships.mid', \Typecho\Db::JOIN_LEFT)
-            ->join('table.contents', 'table.relationships.cid = table.contents.cid', \Typecho\Db::JOIN_LEFT)
-            
+            ->join('table.relationships', 'table.metas.mid = table.relationships.mid', \Typecho\Db::LEFT_JOIN)
+            ->join('table.contents', 'table.relationships.cid = table.contents.cid', \Typecho\Db::LEFT_JOIN)
             ->where('table.metas.type = ?', 'tag')
             ->where('table.contents.status = ? OR table.contents.cid IS NULL', 'publish')
             ->where('table.contents.password IS NULL OR table.contents.password = ? OR table.contents.cid IS NULL', '')
@@ -51,17 +44,17 @@ foreach ($tagCloud as $t) {
 <div class="post">
     <div class="post-container tagcloud-page">
         <div class="post-title"><?php _e('标签云'); ?></div>
-        <?php if (empty($tagCloud)): ?>
+<?php if (empty($tagCloud)): ?>
             <p><?php _e('暂无标签'); ?></p>
-        <?php else: ?>
+<?php else: ?>
             <div class="tagcloud">
-                <?php foreach ($tagCloud as $t): ?>
-                    <?php if ($t['url'] === '') { continue; } ?>
-                    <?php $level = (int) max(1, min(5, (int) ceil(($t['count'] / $maxCount) * 5))); ?>
+<?php foreach ($tagCloud as $t): ?>
+<?php if ($t['url'] === '') { continue; } ?>
+<?php $level = (int) max(1, min(5, (int) ceil(($t['count'] / $maxCount) * 5))); ?>
                     <a class="tag-item tag-lv<?php echo $level; ?>" href="<?php echo lt_esc_attr($t['url']); ?>"><?php echo lt_esc_html($t['name']); ?><span class="tag-count"><?php echo $t['count']; ?></span></a>
-                <?php endforeach; ?>
+<?php endforeach; ?>
             </div>
-        <?php endif; ?>
+<?php endif; ?>
     </div>
 </div>
-<?php $this->need('partials/footer.php'); ?>
+<?php $this->need('footer.php'); ?>

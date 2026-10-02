@@ -3,11 +3,8 @@
 一款经典报纸复古风 Typecho 主题，适配 PHP 8 与 MySQL 8。
 
 > 作者：木子小鱼
-
 > 项目地址：https://github.com/muzihome/LanternPress
-
-> 当前版本：v2.3.0
-
+> 当前版本：v2.4.0
 > 更新日志：[LOG.md](./LOG.md)
 
 ---
@@ -29,11 +26,11 @@
 
 ## 主题介绍
 
-**LanternPress** 是一款经典报纸复古风 Typecho 主题，基于 LanternTown 二次开发。内置文章点赞、阅读量统计、目录树、模态框搜索、跟随系统主题色、归档 / 友链 / 标签云三大独立页面模板，支持瀑布流加载、图片灯箱、代码高亮复制。性能上实现懒加载、内容缓存、数据库优化；安全上配备 CSP、HSTS、XSS 防护与接口速率限制。适配 PHP 8 与 Typecho 1.2.0+，全站响应式布局。
+**LanternPress** 是一款经典报纸复古风 Typecho 主题，基于 LanternTown 二次开发。内置文章点赞、阅读量统计、目录树、模态框搜索、跟随系统主题色、归档 / 友链 / 标签云三大独立页面模板，支持瀑布流加载、图片灯箱、代码高亮复制。性能上实现懒加载、内容缓存、数据库优化；安全上配备 CSP、HSTS、XSS 防护与接口速率限制。适配 PHP 8 与 Typecho 1.3.0+，全站响应式布局。
 
 **版本对比：**
 
-| 项 | 原始 LanternTown v1.0.0 | 当前 LanternPress v2.3.0 |
+| 项 | 原始 LanternTown v1.0.0 | 当前 LanternPress v2.4.0 |
 |---|---|---|
 | 文件数 | 30 | 32 |
 | 配置项 | 12 | 20 |
@@ -121,8 +118,8 @@
 
 | 项目 | 最低版本 | 推荐版本 |
 |---|---|---|
-| Typecho | 1.2.0 | 1.2.1 / 1.3.0 |
-| PHP | 7.4 | 8.0 / 8.1 / 8.2 |
+| Typecho | 1.2.0 | 1.3.0 |
+| PHP | 8.0 | 8.2 / 8.3 / 8.4 |
 | MySQL | 5.7 | 8.0 |
 | 浏览器 | - | Chrome / Edge / Firefox / Safari 最新版 |
 
@@ -289,7 +286,7 @@ A：检查以下几点：
 4. 网络异常时请求 15 秒超时，按钮会显示「请求超时，请重试」
 
 ### Q：文章内容修改后页面没有更新？
-A：v2.3.0 起文章内容处理结果使用文件缓存（`cache/content/{cid}.php`），带结构版本校验。文章发布/修改时会自动删除对应缓存；主题升级若修改了正文处理逻辑，会递增 `LT_CONTENT_CACHE_VERSION` 常量使全站缓存一次性失效。如手动修改了数据库，可删除 `cache/content/` 下对应 cid 文件，或清空整个目录（会自动重建）。
+A：v2.3.0 起文章内容处理结果使用文件缓存（`cache/content/{cid}.php`），带结构版本校验。文章发布/修改时会自动删除对应缓存；v2.4.0 起内容缓存结构版本 `LT_CONTENT_CACHE_VERSION` 由正文处理相关文件（`inc/core.php` / `functions.php` / `post.php` / `sidebar.php`）的修改时间自动派生——主题升级修改了正文处理逻辑后全站缓存自动一次性失效，无需手动递增版本号。如手动修改了数据库，可删除 `cache/content/` 下对应 cid 文件，或清空整个目录（会自动重建）。
 > 从 v2.2.x 升级时，历史缓存残留在数据库 `fields` 表（`name='ltProcessedContent'`），不再被读取；确认站点正常后可执行一次清理：`DELETE FROM typecho_fields WHERE name='ltProcessedContent';`（表前缀按实际调整）。
 
 ### Q：如何配置可信代理白名单？
@@ -307,13 +304,17 @@ A：备份当前主题目录 → 覆盖新版本文件 → 登录后台 → 外�
 
 ## 更新日志
 
+对外更新日志请查看 [LOG.md](./LOG.md)。
+
+**近期版本：**
+- **v2.4.0**（2026-10-02）：文章页底部布局重构（7 分享工具栏 + 阅读/评论/收藏统计 + 相关推荐且不推荐自己 + 生成海报）；后台新增「文章页侧边栏模块」多选（10 模块）；侧边栏去除内部滚动条、文章目录样式与页面协调
 - **v2.3.0**：正式发布版——安全加固（点赞 CSRF、评论令牌、缓存格式加固）；首页轮播 4 秒自动 + 控制按钮悬停显示/离开消失；移动端文章页/独立页不再加载目录树；Web App Manifest 与主题图标；无障碍（跳转链接、键盘焦点、对比度、减弱动态效果）；内容文件缓存、列表查询优化、Prism 按需加载、LCP 优化、限流 GC；全站唯一 h1、结构化数据、归档描述、feed/搜索路由化；Typecho 1.3.0 与 PHP 8.2+ 适配
 - **v2.2.2**：热修版——首页轮播 resize 冻结兜底、卡片键盘委托守卫、克隆幻灯片懒加载、搜索页 noindex、部署脚本失败不写盘与 cache 运行时文件保护
 - **v2.2.1**：Typecho 1.3.0 规范与 PHP 8.2+ 全面审查修复（密码保护链路、三方言 upsert、安全响应头、搜索关键词取值等）
 - **v2.2.0**：第三方库原生 JS 化（移除 jQuery/Headroom/Swiper/Fancybox/ClipboardJS，保留 Prism），目录结构整合（partials/、assets/vendor/）
 - **v2.1.6**：上线前最终审查修复（移除未使用导入、版本号统一）
 - **v2.1.5**：第三次代码审查 5 项修复（PHP 7.4 兼容、版本号同步、CSS 注入防护、文章存在性校验）
-- **v2.1.4**：README + CHANGELOG 文档更新
+- **v2.1.4**：README 重写与 FAQ 补充
 - **v2.1.3**：移除 lantern.config.js 的 preload，消除浏览器警告
 - **v2.1.2**：修复文章列表缩略图空值处理
 - **v2.1.1**：代码审查 5 项修复（原子递增、配置哈希、flock锁、可信代理、点赞超时）
@@ -324,8 +325,9 @@ A：备份当前主题目录 → 覆盖新版本文件 → 登录后台 → 外�
 
 本主题基于原始作者 TypeRenew/Yangsh888 的 LanternTown 主题二次开发，遵循原始项目许可证。
 
-二次开发部分由[木子小鱼](https://muzihome.com)维护，欢迎提交 Issue 和 Pull Request。
+二次开发部分由**[木子小鱼](https://muzihome.com)** 维护，欢迎提交 [Issue](https://github.com/muzihome/LanternPress/issues) 和 [Pull Request](https://github.com/muzihome/LanternPress/pulls)。
 
 **项目地址：** [https://github.com/muzihome/LanternPress](https://github.com/muzihome/LanternPress)
 
-**备用地址：** [https://gitee.com/muzinext/LanternPress](https://gitee.com/muzinext/LanternPress)
+**备用地址：**[https://gitee.com/muzinext/LanternPress](https://gitee.com/muzinext/LanternPress)
+

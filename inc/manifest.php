@@ -66,16 +66,16 @@ try {
             $ltManifest['start_url'] = $ltSiteUrl . '/';
             $ltManifest['scope'] = $ltSiteUrl . '/';
         }
-        
-        
-        
+
+
+
         $ltIconUrl = rtrim((string) $ltOptions->themeUrl, '/') . '/assets/img/icon.svg';
         if ($ltIconUrl !== '') {
             $ltManifest['icons'][0]['src'] = $ltIconUrl;
         }
     }
 } catch (\Throwable $e) {
-    
+
 }
 
 

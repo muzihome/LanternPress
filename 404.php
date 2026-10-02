@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 if (!defined('__TYPECHO_ROOT_DIR__')) exit;
 ?>
-<?php $this->need('partials/header.php'); ?>
+<?php $this->need('header.php'); ?>
 <div class="site-container">
     <div class="not-find-container">
         <div class="not-find">404</div>
@@ -11,4 +11,4 @@ if (!defined('__TYPECHO_ROOT_DIR__')) exit;
     </div>
 </div>
 
-<?php $this->need('partials/footer.php'); ?>
+<?php $this->need('footer.php'); ?>

@@ -7,10 +7,10 @@ $turnPageType = lt_text($this->options->turnPageType ?? 'page');
 ?>
 <?php if ($turnPageType === 'waterfall'): ?>
     <div class="loadmore" data-type="article">
-        <?php $this->pageLink('加载更多', 'next'); ?>
+<?php $this->pageLink('加载更多', 'next'); echo "\n"; ?>
     </div>
 <?php else: ?>
-    <?php $this->pageNav(
+<?php $this->pageNav(
         lt_icon('left'),
         lt_icon('right'),
         1,
@@ -21,8 +21,8 @@ $turnPageType = lt_text($this->options->turnPageType ?? 'page');
             'itemTag' => 'li',
             'textTag' => 'a',
             'currentClass' => 'active',
-            'prevClass' => 'iconfont prev',
-            'nextClass' => 'iconfont next'
+            'prevClass' => 'prev',
+            'nextClass' => 'next'
         ]
-    ); ?>
+    ); echo "\n"; ?>
 <?php endif; ?>

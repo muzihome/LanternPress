@@ -23,6 +23,10 @@ $themeModeNum = (int) lt_text($this->options->themeMode ?? 0);
 if ($themeModeNum < 0 || $themeModeNum > 4) {
     $themeModeNum = 0;
 }
+$postLayout = lt_text($this->options->postLayout ?? 'right');
+if (!in_array($postLayout, ['right', 'left', 'none'], true)) {
+    $postLayout = 'right';
+}
 $isIndexPage = $this->is('index');
 $isSearchPage = $this->is('search');
 $isSingle = $this->is('post') || $this->is('page');
@@ -32,11 +36,17 @@ $themeConfig = [
     'THEME_URL' => rtrim($themeUrlRelative, '/') . '/',
     'BLOG_TITLE' => lt_text($this->options->title ?? ''),
     'THEME_LOGO' => lt_text($this->options->logoUrl ?? ''),
+    'POSTER_LOGO' => lt_text($this->options->posterLogo ?? ''),
     'TURN_PAGE_TYPE' => lt_text($this->options->turnPageType ?? 'page'),
-    'THEME_MODE' => $themeModeNum
+    'THEME_MODE' => $themeModeNum,
+    'POST_LAYOUT' => $postLayout,
+    'ASSET_VERSION' => LT_ASSET_VERSION,
+    'POST_FOLD_ENABLE' => (string) lt_text($this->options->postFoldEnable ?? '1'),
+    'POST_FOLD_THRESHOLD' => (string) lt_text($this->options->postFoldThreshold ?? '2000'),
+    'POST_FOLD_HEIGHT' => (string) lt_text($this->options->postFoldHeight ?? '1500'),
+    'POST_FOLD_MIN_RATIO' => (string) lt_text($this->options->postFoldMinRatio ?? '20')
 ];
 $shortcutIcon = trim(lt_text($this->options->shortcutIcon ?? ''));
-$fieldKeywords = lt_text($this->fields->keywords ?? '');
 $fieldDesc = lt_text($this->fields->desc ?? '');
 $currentPage = (int) $this->request->filter('int')->get('page', 1);
 $logoUrl = lt_text($this->options->logoUrl ?? '');
@@ -57,11 +67,11 @@ $this->archiveTitle(
         'author' => '%s 发布的文章',
     ],
     '',
-    ' - '
+    ''
 );
 $archiveTitleText = trim((string) ob_get_clean());
 if ($archiveTitleText !== '') {
-    $pageTitleParts[] = $archiveTitleText;
+    $pageTitleParts[] = lt_esc_html($archiveTitleText);
 }
 
 $pageTitleParts[] = lt_esc_html($siteTitle);
@@ -90,7 +100,10 @@ if ($pageDesc === '' && $isSingle && !$isHiddenSingle) {
     $pageDesc = \Typecho\Common::subStr(strip_tags($pageDesc), 0, 200, '...');
 }
 
-if ($pageDesc === '' && !$isSingle && !$isIndexPage && !$isSearchPage && $archiveTitleText !== '') {
+if ($isHiddenSingle) {
+    // 密码保护文章：不向 meta description 输出正文摘要（正文区已由密码表单拦截，元信息同步置空）
+    $pageDesc = '';
+} elseif ($pageDesc === '' && !$isSingle && !$isIndexPage && !$isSearchPage && $archiveTitleText !== '') {
     $archiveDescRaw = '';
     if (method_exists($this, 'getArchiveDescription')) {
         try {
@@ -121,21 +134,67 @@ if ($isSingle && !$isHiddenSingle) {
 }
 
 $ogImage = '';
+$ogImageIsDefault = false; // true = 站点默认图（blog_bg），供海报功能识别"文章无封面"
 if ($isSingle && !$isHiddenSingle) {
-    $ogImage = getThumb($this, $this->options);
+    // 文章主图（banner 字段）→ 正文首图 → 默认图；不走 indexThumbs 轮换（轮换图仅供列表缩略图，语义与具体文章不符）
+    $ogImage = lt_text($this->fields->bannerUrl ?? '');
+    if ($ogImage === '') {
+        $ogImage = lt_content_image(lt_text($this->content ?? ''));
+    }
+    if ($ogImage === '') {
+        $ogImage = rtrim($themeUrlFull, '/') . '/assets/img/blog_bg.jpg';
+        $ogImageIsDefault = true;
+    } else {
+        $ogImage = lt_safe_url($ogImage);
+    }
+    if (str_contains($ogImage, '/assets/img/blog_bg.jpg')) {
+        $ogImageIsDefault = true;
+    }
 } elseif ($logoUrl !== '') {
     $ogImage = $logoUrl;
 }
 
 if ($ogImage === '') {
     $ogImage = rtrim($themeUrlFull, '/') . '/assets/img/blog_bg.jpg';
+    $ogImageIsDefault = true;
 }
 
+// og:image 绝对化：相对路径（/uploads/… 或 uploads/…）拼接站点域名，
+// 保证外站分享（微信/QQ/微博）与爬虫可解析完整图片 URL
+if ($ogImage !== '') {
+    if (str_starts_with($ogImage, '/')) {
+        $ogImage = rtrim($siteUrl, '/') . $ogImage;
+    } elseif (!preg_match('#^https?://#i', $ogImage)) {
+        $ogImage = rtrim($siteUrl, '/') . '/' . $ogImage;
+    }
+}
+
+// og:image 尺寸（防御式）：仅当图片映射到本地文件且可读时输出 width/height，
+// 远程图床（如 CDN）无法低成本探测则跳过，不影响分享解析
+$ogImageW = 0;
+$ogImageH = 0;
+if ($ogImage !== '') {
+    $sitePath = (string) parse_url($siteUrl, PHP_URL_PATH);
+    $imgRel = $ogImage;
+    if ($sitePath !== '' && str_starts_with($imgRel, $sitePath)) {
+        $imgRel = substr($imgRel, strlen($sitePath));
+    }
+    if (str_starts_with($imgRel, '/') && defined('__TYPECHO_ROOT_DIR__')) {
+        $imgLocal = rtrim((string) __TYPECHO_ROOT_DIR__, '/') . $imgRel;
+        if (is_file($imgLocal) && is_readable($imgLocal)) {
+            $imgDim = @getimagesize($imgLocal);
+            if (is_array($imgDim) && ($imgDim[0] ?? 0) > 0 && ($imgDim[1] ?? 0) > 0) {
+                $ogImageW = (int) $imgDim[0];
+                $ogImageH = (int) $imgDim[1];
+            }
+        }
+    }
+}
 
 $feedUrl = $siteUrl . '/feed/';
 try {
-    $resolvedFeed = \Typecho\Router::url('feed', [], $this->options->index);
-    if (is_string($resolvedFeed) && $resolvedFeed !== '') {
+    $resolvedFeed = \Typecho\Router::url('feed', ['feed' => ''], $this->options->index);
+    if (is_string($resolvedFeed) && $resolvedFeed !== '' && strpos($resolvedFeed, '{') === false) {
         $feedUrl = $resolvedFeed;
     }
 } catch (\Throwable $e) {  }
@@ -181,7 +240,7 @@ if ($navMenuRaw !== '') {
         if (count($parts) !== 2 || $parts[0] === '' || $parts[1] === '') {
             continue;
         }
-        
+
         $url = lt_safe_url($parts[1]);
         if ($url === '') {
             continue;
@@ -206,152 +265,154 @@ if (empty($navItems)) {
 $customCss = trim(lt_text($this->options->customCss ?? ''));
 
 $customCssEscaped = $customCss !== '' ? preg_replace('/<\/(script|style)>/i', '<\\/$1>', $customCss) : '';
+
+// JSON-LD 结构化数据：逻辑统一前置，HTML 输出区仅保留 echo，保证 view-source 干净
+$ltLdJson = '';
+$ltBreadcrumbJson = '';
+if ($isSingle) {
+    $publisher = ['@type' => 'Organization', 'name' => $siteTitle];
+    if ($logoUrl !== '') {
+        $publisher['logo'] = ['@type' => 'ImageObject', 'url' => $logoUrl];
+    }
+    $ldJson = [
+        '@context' => 'https://schema.org',
+        '@type' => 'Article',
+        'headline' => $pageTitleMeta,
+        'mainEntityOfPage' => ['@type' => 'WebPage', '@id' => $canonicalUrl !== '' ? $canonicalUrl : $siteUrl],
+        'datePublished' => date('c', (int) $this->created),
+        'dateModified' => date('c', (int) ((($this->modified ?? 0) > 0) ? $this->modified : $this->created)),
+        'author' => ['@type' => 'Person', 'name' => lt_text($this->author->name ?? $this->author->screenName ?? '')],
+        'publisher' => $publisher
+    ];
+    if ($ogImage !== '') {
+        $ldJson['image'] = [$ogImage];
+    }
+    if ($pageDesc !== '') {
+        $ldJson['description'] = $pageDesc;
+    }
+    $ltLdJson = json_encode($ldJson, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_QUOT | JSON_HEX_APOS);
+} else {
+    $ltLdJson = json_encode([
+        '@context' => 'https://schema.org',
+        '@type' => 'WebSite',
+        'name' => $siteTitle,
+        'url' => $siteUrl,
+        'potentialAction' => [
+            '@type' => 'SearchAction',
+            'target' => $searchLdTarget,
+            'query-input' => 'required name=search_term_string'
+        ]
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_QUOT | JSON_HEX_APOS);
+}
+if ($breadcrumb !== null) {
+    $breadcrumbItems = [];
+    $position = 1;
+    foreach ($breadcrumb as $crumb) {
+        if ($crumb['url'] === '' || $crumb['name'] === '') {
+            continue;
+        }
+        $breadcrumbItems[] = [
+            '@type' => 'ListItem',
+            'position' => $position++,
+            'name' => $crumb['name'],
+            'item' => $crumb['url'],
+        ];
+    }
+    $ltBreadcrumbJson = json_encode([
+        '@context' => 'https://schema.org',
+        '@type' => 'BreadcrumbList',
+        'itemListElement' => $breadcrumbItems,
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_QUOT | JSON_HEX_APOS);
+}
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="renderer" content="webkit">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <?php ?>
-    <?php $avatarPreconnect = trim(lt_text($this->options->avatarProxy ?? '')); if ($avatarPreconnect !== ''): $apHost = parse_url($avatarPreconnect, PHP_URL_HOST); if ($apHost): ?>
+<?php
+    $avatarPreconnect = trim(lt_text($this->options->avatarProxy ?? ''));
+    if ($avatarPreconnect !== ''):
+        $apHost = parse_url($avatarPreconnect, PHP_URL_HOST);
+        if ($apHost):
+    ?>
     <link rel="preconnect" href="https://<?php echo lt_esc_attr($apHost); ?>" crossorigin>
-    <?php endif; else: ?>
+<?php
+        endif;
+    else:
+    ?>
     <link rel="preconnect" href="https://secure.gravatar.com" crossorigin>
-    <?php endif; ?>
-    <?php if ($shortcutIcon !== '' && strlen($shortcutIcon) > 5): ?>
-        <link rel="shortcut icon" href="<?php echo lt_esc_attr($shortcutIcon); ?>">
-    <?php else: ?>
-        <?php ?>
-        <link rel="icon" type="image/svg+xml" href="<?php $this->options->themeUrl('assets/img/icon.svg'); ?>?v=<?php echo $ltAssetVersion; ?>">
-    <?php endif; ?>
-    <link rel="manifest" href="<?php $this->options->themeUrl('manifest.php'); ?>">
+<?php endif; ?>
+<?php if ($shortcutIcon !== '' && strlen($shortcutIcon) > 5): ?>
+    <link rel="shortcut icon" href="<?php echo lt_esc_attr($shortcutIcon); ?>">
+<?php else: ?>
+    <link rel="icon" type="image/svg+xml" href="<?php $this->options->themeUrl('assets/img/icon.svg'); ?>?v=<?php echo $ltAssetVersion; ?>">
+<?php endif; ?>
+    <link rel="manifest" href="<?php $this->options->themeUrl('inc/manifest.php'); ?>">
     <link rel="alternate" type="application/rss+xml" title="RSS 2.0" href="<?php echo lt_esc_attr($feedUrl); ?>"/>
-    <?php if ($canonicalUrl !== ''): ?>
-        <link rel="canonical" href="<?php echo lt_esc_attr($canonicalUrl); ?>"/>
-    <?php endif; ?>
-    <?php if ($isSearchPage): ?>
-        <?php ?>
-        <meta name="robots" content="noindex,follow">
-    <?php endif; ?>
-    <?php if ($pageDesc !== ''): ?>
-        <meta name="description" content="<?php echo lt_esc_attr($pageDesc); ?>">
-    <?php endif; ?>
-    
+<?php if ($canonicalUrl !== '' && !$isSearchPage): ?>
+    <link rel="canonical" href="<?php echo lt_esc_attr($canonicalUrl); ?>"/>
+<?php endif; ?>
+<?php if ($isSearchPage || $this->is('archive', '404')): ?>
+    <meta name="robots" content="noindex,follow">
+<?php endif; ?>
+<?php if ($pageDesc !== ''): ?>
+    <meta name="description" content="<?php echo lt_esc_attr($pageDesc); ?>">
+<?php endif; ?>
+
     <meta property="og:site_name" content="<?php echo lt_esc_attr($siteTitle); ?>">
     <meta property="og:type" content="<?php echo $isSingle ? 'article' : 'website'; ?>">
     <meta property="og:title" content="<?php echo lt_esc_attr($pageTitleMeta); ?>">
     <meta property="og:url" content="<?php echo lt_esc_attr($canonicalUrl !== '' ? $canonicalUrl : $siteUrl); ?>">
-    <?php if ($pageDesc !== ''): ?>
-        <meta property="og:description" content="<?php echo lt_esc_attr($pageDesc); ?>">
-    <?php endif; ?>
-    <?php if ($ogImage !== ''): ?>
-        <meta property="og:image" content="<?php echo lt_esc_attr($ogImage); ?>">
-        <meta name="twitter:card" content="summary_large_image">
-        <meta name="twitter:image" content="<?php echo lt_esc_attr($ogImage); ?>">
-    <?php else: ?>
-        <meta name="twitter:card" content="summary">
-    <?php endif; ?>
-    <meta name="twitter:title" content="<?php echo lt_esc_attr($pageTitleMeta); ?>">
-    <?php if ($pageDesc !== ''): ?>
-        <meta name="twitter:description" content="<?php echo lt_esc_attr($pageDesc); ?>">
-    <?php endif; ?>
-    
+<?php if ($pageDesc !== ''): ?>
+    <meta property="og:description" content="<?php echo lt_esc_attr($pageDesc); ?>">
+<?php endif; ?>
+<?php if ($ogImage !== ''): ?>
+    <meta property="og:image" content="<?php echo lt_esc_attr($ogImage); ?>">
+<?php if ($ogImageW > 0 && $ogImageH > 0): ?>
+    <meta property="og:image:width" content="<?php echo (int) $ogImageW; ?>">
+    <meta property="og:image:height" content="<?php echo (int) $ogImageH; ?>">
+<?php endif; ?>
+    <meta name="theme:poster_cover" content="<?php echo $ogImageIsDefault ? '0' : '1'; ?>">
+<?php endif; ?>
+
+
     <script type="application/ld+json">
-    <?php if ($isSingle): ?>
-    <?php
-        $publisher = ['@type' => 'Organization', 'name' => $siteTitle];
-        if ($logoUrl !== '') {
-            $publisher['logo'] = ['@type' => 'ImageObject', 'url' => $logoUrl];
-        }
-        $ldJson = [
-            '@context' => 'https://schema.org',
-            '@type' => 'Article',
-            'headline' => $pageTitleMeta,
-            'mainEntityOfPage' => ['@type' => 'WebPage', '@id' => $canonicalUrl !== '' ? $canonicalUrl : $siteUrl],
-            'datePublished' => date('c', (int) $this->created),
-            
-            'dateModified' => date('c', (int) ((($this->modified ?? 0) > 0) ? $this->modified : $this->created)),
-            'author' => ['@type' => 'Person', 'name' => lt_text($this->author->name ?? $this->author->screenName ?? '')],
-            'publisher' => $publisher
-        ];
-        if ($ogImage !== '') {
-            $ldJson['image'] = [$ogImage];
-        }
-        if ($pageDesc !== '') {
-            $ldJson['description'] = $pageDesc;
-        }
-        
-        echo json_encode($ldJson, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_QUOT | JSON_HEX_APOS);
-    ?>
-    <?php else: ?>
-    <?php
-        echo json_encode([
-            '@context' => 'https://schema.org',
-            '@type' => 'WebSite',
-            'name' => $siteTitle,
-            'url' => $siteUrl,
-            'potentialAction' => [
-                '@type' => 'SearchAction',
-                'target' => $searchLdTarget,
-                'query-input' => 'required name=search_term_string'
-            ]
-            
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_QUOT | JSON_HEX_APOS);
-    ?>
-    <?php endif; ?>
+<?php echo $ltLdJson . "\n"; ?>
     </script>
-    <?php if ($breadcrumb !== null): ?>
+<?php if ($breadcrumb !== null): ?>
     <script type="application/ld+json">
-    <?php
-        $breadcrumbItems = [];
-        $position = 1;
-        foreach ($breadcrumb as $crumb) {
-            if ($crumb['url'] === '' || $crumb['name'] === '') {
-                continue;
-            }
-            $breadcrumbItems[] = [
-                '@type' => 'ListItem',
-                'position' => $position++,
-                'name' => $crumb['name'],
-                'item' => $crumb['url'],
-            ];
-        }
-        echo json_encode([
-            '@context' => 'https://schema.org',
-            '@type' => 'BreadcrumbList',
-            'itemListElement' => $breadcrumbItems,
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_QUOT | JSON_HEX_APOS);
-    ?>
+<?php echo $ltBreadcrumbJson . "\n"; ?>
     </script>
-    <?php endif; ?>
-    <link rel="stylesheet" type="text/css" media="all" href="<?php $this->options->themeUrl('assets/css/font.css'); ?>?v=<?php echo $ltAssetVersion; ?>"/>
+<?php endif; ?>
+    <link rel="stylesheet" type="text/css" media="all" href="<?php $this->options->themeUrl('assets/css/iconfont.min.css'); ?>?v=<?php echo $ltAssetVersion; ?>"/>
     <link rel="stylesheet" type="text/css" media="all" href="<?php $this->options->themeUrl('assets/css/lantern.min.css'); ?>?v=<?php echo $ltAssetVersion; ?>"/>
     <script>
-        window.LANTERTOWN_CONFIG = <?php echo json_encode($themeConfig, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_THROW_ON_ERROR); ?>;
+        window.LANTERTOWN_CONFIG = {
+<?php
+            $ltCfgJsonFlags = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP;
+            foreach ($themeConfig as $ltCfgKey => $ltCfgVal) {
+                $ltCfgValJson = json_encode($ltCfgVal, $ltCfgJsonFlags);
+                echo '            ' . json_encode((string) $ltCfgKey, $ltCfgJsonFlags) . ': ' . (is_string($ltCfgValJson) ? $ltCfgValJson : 'null') . ",\n";
+            }
+?>
+        };
     </script>
-    <?php ?>
-    <?php if ($needPrism): ?>
-        <link rel="stylesheet" href="<?php $this->options->themeUrl('assets/vendor/prism/prism.min.css'); ?>?v=<?php echo $ltAssetVersion; ?>"/>
-        <script type="text/javascript" defer src="<?php $this->options->themeUrl('assets/vendor/prism/prism.min.js'); ?>?v=<?php echo $ltAssetVersion; ?>"></script>
-    <?php endif; ?>
-    <?php if ($fieldKeywords !== '' || $fieldDesc !== '') : ?>
-        <?php $this->header('keywords=' . rawurlencode($fieldKeywords) . '&description=' . rawurlencode($fieldDesc)); ?>
-    <?php else : ?>
-        <?php $this->header(); ?>
-    <?php endif; ?>
-    <title>
-        <?php echo $pageTitle; ?>
-    </title>
-    <?php if ($customCssEscaped !== ''): ?>
-        <style><?php echo $customCssEscaped; ?></style>
-    <?php endif; ?>
-    <?php ?>
+<?php if ($needPrism): ?>
+    <link rel="stylesheet" href="<?php $this->options->themeUrl('assets/vendor/prism/prism.min.css'); ?>?v=<?php echo $ltAssetVersion; ?>"/>
+    <script type="text/javascript" defer src="<?php $this->options->themeUrl('assets/vendor/prism/prism.min.js'); ?>?v=<?php echo $ltAssetVersion; ?>"></script>
+<?php endif; ?>
+<?php $this->header(
+        'generator=&template=&pingback=&xmlrpc=&wlw=&rss2=&rss1=&atom=&keywords=&social=0&description='
+    ); ?>
+    <title><?php echo $pageTitle; ?></title>
+<?php if ($customCssEscaped !== ''): ?>
+    <style><?php echo $customCssEscaped; ?></style>
+<?php endif; ?>
 </head>
 <body id="blog_container" class="<?php echo $themeModeNum === 4 ? 'bg-auto' : 'bg' . $themeModeNum; ?>">
 <script>
-    
     (function () {
         var cfg = window.LANTERTOWN_CONFIG || {};
         var body = document.getElementById('blog_container');
@@ -364,16 +425,16 @@ $customCssEscaped = $customCss !== '' ? preg_replace('/<\/(script|style)>/i', '<
 <div class="site-container">
     <nav class="navbar" id="navbar">
         <a class="navbar-logo" href="<?php $this->options->siteUrl(); ?>">
-            <?php if ($logoUrl): ?>
+<?php if ($logoUrl): ?>
                 <img class="logo" src="<?php echo lt_esc_attr($logoUrl); ?>" alt="<?php echo lt_esc_attr($siteTitle); ?>"/>
-            <?php else: ?>
+<?php else: ?>
                 <span class="logo-text"><?php $this->options->title(); ?></span>
-            <?php endif; ?>
+<?php endif; ?>
         </a>
         <div class="navbar-menu">
-            <?php foreach ($navItems as $item): ?>
+<?php foreach ($navItems as $item): ?>
                 <a class="navbar-item hover-line" href="<?php echo lt_esc_attr($item['permalink']); ?>"><?php echo lt_esc_html($item['title']); ?></a>
-            <?php endforeach; ?>
+<?php endforeach; ?>
             <button type="button" id="nav-search-btn" class="navbar-item nav-search-btn" aria-label="搜索">搜索</button>
         </div>
         <div class="navbar-mobile-menu">
@@ -384,23 +445,22 @@ $customCssEscaped = $customCss !== '' ? preg_replace('/<\/(script|style)>/i', '<
                 <span></span>
             </div>
             <ul id="mobile-menu-list">
-                <?php foreach ($navItems as $item): ?>
+<?php foreach ($navItems as $item): ?>
                     <li>
                         <a href="<?php echo lt_esc_attr($item['permalink']); ?>"><?php echo lt_esc_html($item['title']); ?></a>
                     </li>
-                <?php endforeach; ?>
+<?php endforeach; ?>
                 <li>
                     <button type="button" id="nav-search-btn-mobile" class="nav-search-btn-mobile" aria-label="搜索">搜索</button>
                 </li>
             </ul>
         </div>
     </nav>
-    <?php ?>
     <div id="search-modal" class="search-modal" role="dialog" aria-modal="true" aria-label="搜索">
         <div class="search-modal-overlay" id="search-modal-overlay"></div>
         <div class="search-modal-box">
-            <?php
-            
+<?php
+
             $searchActionUrl = $siteUrl . '/';
             try {
                 $resolved = \Typecho\Router::url('search', [], $this->options->index);
@@ -409,8 +469,8 @@ $customCssEscaped = $customCss !== '' ? preg_replace('/<\/(script|style)>/i', '<
                 }
             } catch (\Throwable $e) {  }
 
-            
-            
+
+
             $modalKeyword = '';
             if ($this->is('search')) {
                 if (method_exists($this, 'getArchiveKeywords')) {

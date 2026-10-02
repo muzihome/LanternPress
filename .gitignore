@@ -1,77 +1,32 @@
-# ===================== Windows系统文件 =====================
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-*.tmp
-*.swp
-*.bak
+# ============================================================
+# LanternPress 公开发行版（GitHub）忽略规则
+# 日常开发在 Gitee 私库，本仓库只发布干净发行源码
+# 公库日志：带 LOG.md（概要版）；CHANGELOG.md（详细版）不公开发行
+# ============================================================
 
-# ===================== IDE 编辑器 =====================
-# VSCode
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-*.code-workspace
-
-# JetBrains PHPStorm / IDEA
+# --- 开发/内部目录（私库专属）---
+.build/
+.trae/
 .idea/
-*.iml
-*.iws
-*.local
-
-# Sublime
-*.sublime-project
-*.sublime-workspace
-
-# ===================== PHP / Composer =====================
-/vendor/
-composer.lock
-!composer.lock
-
-# 本地环境配置、密钥（重要，防止泄露数据库、密钥）
-.env
-.env.local
-.env.*.local
-config.local.php
-dbconfig.local.php
-
-# ===================== PHP 缓存、日志、编译缓存 =====================
-*.log
-logs/
-runtime/
+.vscode/
 cache/
-temp/
-tmp/
-upload/cache/
-storage/cache/
-*.php~
 
-# ===================== Typecho 项目特有 =====================
-# 上传附件（用户上传图片资源，不提交版本库）
-usr/uploads/
-usr/cache/
-# 数据库备份导出文件
-*.sql
-*.sql.gz
-*.dump
+# --- 详细版日志（公库只带 LOG.md 概要版）---
+CHANGELOG.md
 
-# ===================== Node / NPM （如有前端编译） =====================
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-dist/
-build/
+# --- 压缩产物（源码只保留格式化版；发布流程按需生成）---
+assets/css/*.min.css
+assets/css/*.min.css.map
+assets/js/*.min.js
+assets/js/*.min.js.map
 
-# ===================== Git 自身临时文件 =====================
-*.orig
-.rej
+# --- 操作系统垃圾文件 ---
+.DS_Store
+Thumbs.db
+desktop.ini
 
-# ===================== 本地开发备份 =====================
-_backup/
-_backups/
-*.zip
-*.rar
-*.7z
+# --- 编辑器/临时文件 ---
+*.log
+*.tmp
+*.bak
+*~

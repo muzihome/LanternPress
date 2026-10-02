@@ -1,28 +1,23 @@
 <?php
-
-
-
-
-
 declare(strict_types=1);
 
 if (!defined('__TYPECHO_ROOT_DIR__')) exit;
 
-$this->need('partials/header.php');
+$this->need('header.php');
 
 
 $cacheDir = __DIR__ . '/cache';
 $cacheFile = $cacheDir . '/archive-cache.php';
 $cachePrefix = '<?php exit; ?>';
-$cacheTtl = 3600; 
+$cacheTtl = 3600;
 
 $groups = null;
 if (is_file($cacheFile)) {
     $data = @file_get_contents($cacheFile);
     if ($data !== false && strpos($data, $cachePrefix) === 0) {
         $payload = substr($data, strlen($cachePrefix));
-        
-        
+
+
         $sepPos = strpos($payload, '|');
         if ($sepPos !== false && is_numeric(substr($payload, 0, $sepPos))) {
             $timestamp = (int) substr($payload, 0, $sepPos);
@@ -30,7 +25,7 @@ if (is_file($cacheFile)) {
             if (time() - $timestamp <= $cacheTtl) {
                 $decoded = json_decode($encoded, true);
                 if (!is_array($decoded)) {
-                    
+
                     $decoded = @unserialize($encoded);
                 }
                 if (is_array($decoded)) {
@@ -38,7 +33,7 @@ if (is_file($cacheFile)) {
                 }
             }
         } else {
-            
+
             $decoded = @unserialize($payload);
             if (is_array($decoded)) {
                 $groups = $decoded;
@@ -71,27 +66,32 @@ if ($groups === null) {
     }
     krsort($groups);
 
-    
+
     try {
         if (!is_dir($cacheDir)) {
             @mkdir($cacheDir, 0755, true);
         }
         if (is_dir($cacheDir) && is_writable($cacheDir)) {
-            @file_put_contents($cacheFile, $cachePrefix . time() . '|' . json_encode($groups, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            // 临时文件 + rename 原子写，避免并发写半文件（与内容缓存同款模式）
+            $cacheTmp = $cacheFile . '.tmp.' . bin2hex(random_bytes(4));
+            $cachePayload = $cachePrefix . time() . '|' . json_encode($groups, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if (@file_put_contents($cacheTmp, $cachePayload) !== false) {
+                @rename($cacheTmp, $cacheFile);
+            }
         }
     } catch (\Throwable $e) {
-        
+
     }
 }
 ?>
 <div class="post">
     <div class="post-container archive-page">
         <div class="post-title"><?php _e('归档'); ?></div>
-        <?php if (empty($groups)): ?>
+<?php if (empty($groups)): ?>
             <p><?php _e('暂无文章'); ?></p>
-        <?php endif; ?>
-        <?php foreach ($groups as $year => $months): ?>
-            <?php
+<?php endif; ?>
+<?php foreach ($groups as $year => $months): ?>
+<?php
             $yearCount = 0;
             foreach ($months as $m => $mRows) {
                 $yearCount += count($mRows);
@@ -99,18 +99,18 @@ if ($groups === null) {
             krsort($months);
             ?>
             <div class="archive-year"><?php printf(_t('%d 年（共 %d 篇）'), $year, $yearCount); ?></div>
-            <?php foreach ($months as $month => $monthRows): ?>
+<?php foreach ($months as $month => $monthRows): ?>
                 <ul class="archive-list">
-                    <?php foreach ($monthRows as $row): ?>
-                        <?php $permalink = \Typecho\Router::url('post', $row, $this->options->index); ?>
+<?php foreach ($monthRows as $row): ?>
+<?php $permalink = \Typecho\Router::url('post', $row, $this->options->index); ?>
                         <li>
                             <a href="<?php echo lt_esc_attr($permalink); ?>"><?php echo lt_esc_html($row['title']); ?></a>
                             <time><?php echo date('Y-m-d', (int) $row['created']); ?></time>
                         </li>
-                    <?php endforeach; ?>
+<?php endforeach; ?>
                 </ul>
-            <?php endforeach; ?>
-        <?php endforeach; ?>
+<?php endforeach; ?>
+<?php endforeach; ?>
     </div>
 </div>
-<?php $this->need('partials/footer.php'); ?>
+<?php $this->need('footer.php'); ?>
