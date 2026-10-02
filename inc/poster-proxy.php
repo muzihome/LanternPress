@@ -36,13 +36,17 @@ $allowLoopback = false;
 $verifyTls = true;
 
 $siteHost = (string)($_SERVER['HTTP_HOST'] ?? '');
-$siteHostClean = parse_url('http://' . $siteHost, PHP_URL_HOST) ?: $siteHost;
+$siteHostClean = strtolower(parse_url('http://' . $siteHost, PHP_URL_HOST) ?: $siteHost);
 $hostParts = explode('.', (string)$siteHostClean);
 $topDomain = count($hostParts) >= 2 ? implode('.', array_slice($hostParts, -2)) : $siteHostClean;
 
 $url = isset($_GET['url']) ? trim((string)$_GET['url']) : '';
 $scheme = strtolower((string)parse_url($url, PHP_URL_SCHEME));
-$host = parse_url($url, PHP_URL_HOST);
+$host = strtolower((string)parse_url($url, PHP_URL_HOST));
+$port = (int) parse_url($url, PHP_URL_PORT);
+// 端口限制：仅允许未显式指定端口（默认 80/443）或显式 80/443，
+// 防止白名单域携带任意端口（如 :6379）经代理访问非 HTTP 服务（SSRF 加固）
+$portOk = $port === 0 || $port === 80 || $port === 443;
 
 $isLocalLoop = $host === 'localhost' || $host === '::1' || preg_match('/^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/', (string)$host) === 1;
 // 私网/保留段 IP 字面量显式拒绝（IPv4/IPv6 私网、127.x、169.254、::1、fe80 等），
@@ -68,6 +72,7 @@ foreach ($extraHosts as $eh) {
 }
 $isAllowed = in_array($scheme, ['http', 'https'], true)
     && $host !== null && $host !== ''
+    && $portOk
     && (
         $host === $siteHostClean
         || $host === $topDomain
@@ -82,9 +87,18 @@ if (!$isAllowed) {
     exit('forbidden');
 }
 
-// Referer 协议与站点实际协议一致（http 部署时防盗链图床按 http 校验）
+// Referer 协议与站点实际协议一致（http 部署时防盗链图床按 http 校验）；
+// 转发协议头仅在可信代理白名单内采信（与主题 lt_is_https 同源策略），防伪造
+$ltRemoteAddr = !empty($_SERVER['REMOTE_ADDR']) ? trim((string) $_SERVER['REMOTE_ADDR']) : '';
+$ltTrustedProxies = defined('LT_TRUSTED_PROXY_IPS') ? LT_TRUSTED_PROXY_IPS : null;
+$ltProxyList = is_array($ltTrustedProxies)
+    ? $ltTrustedProxies
+    : (is_string($ltTrustedProxies) && $ltTrustedProxies !== ''
+        ? array_map('trim', explode(',', $ltTrustedProxies))
+        : []);
 $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-    || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+    || (int) ($_SERVER['SERVER_PORT'] ?? 0) === 443
+    || ((($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https') && in_array($ltRemoteAddr, $ltProxyList, true));
 $referer = ($isHttps ? 'https' : 'http') . '://' . $siteHost . '/';
 $ctx = stream_context_create([
     'http' => [

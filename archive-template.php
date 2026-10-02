@@ -1,4 +1,9 @@
 <?php
+/**
+ * 归档页
+ *
+ * @package custom
+ */
 declare(strict_types=1);
 
 if (!defined('__TYPECHO_ROOT_DIR__')) exit;
@@ -6,7 +11,8 @@ if (!defined('__TYPECHO_ROOT_DIR__')) exit;
 $this->need('header.php');
 
 
-$cacheDir = __DIR__ . '/cache';
+// 归档缓存统一落在主题根目录 cache/（与 functions.php 发布清除路径同源）
+$cacheDir = dirname(__DIR__) . '/cache';
 $cacheFile = $cacheDir . '/archive-cache.php';
 $cachePrefix = '<?php exit; ?>';
 $cacheTtl = 3600;
@@ -23,18 +29,15 @@ if (is_file($cacheFile)) {
             $timestamp = (int) substr($payload, 0, $sepPos);
             $encoded = substr($payload, $sepPos + 1);
             if (time() - $timestamp <= $cacheTtl) {
+                // 缓存文件均为本主题 json 写入；旧 unserialize 兼容已移除
                 $decoded = json_decode($encoded, true);
-                if (!is_array($decoded)) {
-
-                    $decoded = @unserialize($encoded);
-                }
                 if (is_array($decoded)) {
                     $groups = $decoded;
                 }
             }
         } else {
-
-            $decoded = @unserialize($payload);
+            // 无时间戳头旧格式：按整段 json 尝试（serialize 旧文件自然失效重建）
+            $decoded = json_decode($payload, true);
             if (is_array($decoded)) {
                 $groups = $decoded;
             }

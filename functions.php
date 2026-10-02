@@ -377,8 +377,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         }
         try {
             $ltSecurity = \Typecho\Widget::widget('\Widget\Security');
-            $ltExpected = $ltSecurity->getToken(\Typecho\Request::getInstance()->getReferer());
-            if (!hash_equals((string) $ltExpected, $ltToken)) {
+            // 双候选校验：页面 token 按当前请求 URL 生成（post.php），与 Referer 任一匹配即通过；
+            // 隐私模式/内嵌浏览器无 Referer 时不再误伤（CSRF 防护仍由会话绑定 token 保证）
+            $ltRequest = \Typecho\Request::getInstance();
+            $ltExpected = $ltSecurity->getToken($ltRequest->getRequestUrl());
+            $ltReferer = (string) $ltRequest->getReferer();
+            $ltExpectedReferer = $ltReferer !== '' ? $ltSecurity->getToken($ltReferer) : '';
+            $ltTokenValid = hash_equals((string) $ltExpected, $ltToken)
+                || ($ltExpectedReferer !== '' && hash_equals($ltExpectedReferer, $ltToken));
+            if (!$ltTokenValid) {
                 header('HTTP/1.1 403 Forbidden');
                 echo json_encode(['success' => false, 'error' => 'invalid token']);
                 exit;

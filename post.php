@@ -200,7 +200,7 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
 <?php endif; ?>
             </div>
 
-            <div id="post-content" class="post-content line-numbers">
+            <div id="post-content" class="post-content">
 <?php if ($isPost && $this->hidden): ?>
 <?php
                     $pwdSecurity = $this->widget('\Widget\Security');
@@ -242,21 +242,21 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
                         function (array $matches) use ($title, &$ltImgIndex): string {
                             $tag = $matches[0];
                             $src = '';
-                            if (preg_match('/\bsrc=(["\'])(.*?)\1/i', $tag, $sm)) {
+                            if (preg_match('/(?<![-\w])src=(["\'])(.*?)\1/i', $tag, $sm)) {
                                 $src = lt_safe_url((string) ($sm[2] ?? ''));
                             }
                             if ($src === '') {
                                 return $tag;
                             }
                             $alt = '';
-                            if (preg_match('/\balt=(["\'])(.*?)\1/i', $tag, $am)) {
+                            if (preg_match('/(?<![-\w])alt=(["\'])(.*?)\1/i', $tag, $am)) {
                                 $alt = trim((string) ($am[2] ?? ''));
                             }
                             if ($alt === '') {
                                 $alt = $title;
                             }
                             $newImg = preg_replace_callback(
-                                '/\bsrc=(["\'])(.*?)\1/i',
+                                '/(?<![-\w])src=(["\'])(.*?)\1/i',
                                 function (array $m) use ($src): string {
                                     return 'src="' . lt_esc_attr($src) . '"';
                                 },
@@ -272,7 +272,7 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
                                 }
                                 return $tag . ' ' . $attr;
                             };
-                            if (!preg_match('/\salt=/i', $newImg)) {
+                            if (!preg_match('/(?<![-\w])alt=/i', $newImg)) {
                                 $newImg = $insertAttr($newImg, 'alt="' . lt_esc_attr($alt) . '"');
                             }
 
@@ -362,6 +362,9 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
                         $siteUrlShare = rtrim(lt_text($this->options->siteUrl ?? ''), '/');
                         if (str_starts_with($sharePic, '/')) {
                             $sharePic = $siteUrlShare . $sharePic;
+                        } elseif (str_starts_with($sharePic, '//')) {
+                            // 协议相对地址（//cdn.com/x）：补 https: 前缀保持可解析
+                            $sharePic = 'https:' . $sharePic;
                         } elseif (!preg_match('#^https?://#i', $sharePic)) {
                             $sharePic = $siteUrlShare . '/' . $sharePic;
                         }
@@ -470,6 +473,7 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
                                         ->where('table.relationships.mid = ?', $ltRelMid)
                                         ->where('table.contents.type = ?', 'post')
                                         ->where('table.contents.status = ?', 'publish')
+                                        ->where('table.contents.password IS NULL OR table.contents.password = ?', '')
                                         ->where('table.contents.cid <> ?', $cid)
                                         ->limit(3)
                                         ->order('table.contents.created', \Typecho\Db::SORT_DESC)
@@ -510,7 +514,7 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
                                 $ltRecommendRows = $ltDb->fetchAll(
                                     $ltDb->select('cid', 'type', 'title', 'slug', 'created')
                                         ->from('table.contents')
-                                        ->where('cid IN ? AND type = ? AND status = ?', $ltRecommendCids, 'post', 'publish')
+                                        ->where('cid IN ? AND type = ? AND status = ? AND (password IS NULL OR password = ?)', $ltRecommendCids, 'post', 'publish', '')
                                 );
                                 $ltOrderMap = array_flip($ltRecommendCids);
                                 usort($ltRecommendRows, static fn(array $a, array $b): int => ($ltOrderMap[(int) ($a['cid'] ?? 0)] ?? 999) <=> ($ltOrderMap[(int) ($b['cid'] ?? 0)] ?? 999));

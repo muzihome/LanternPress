@@ -1,5 +1,47 @@
 # LanternPress 更新日志
 
+## 开发版（未发布） - 2026-10-02
+
+- 第四轮全面深度审查（回归批次6-8 + CSS 结构审计 + JS 配置契约核验）与批次9修复（主题版本号不变，资产版本保持 1.4.16）：
+  - 批次9（低风险/冗余）：lantern.post.js 海报导出像素比死配置点清理——注释宣称可通过 LANTERTOWN_CONFIG.POSTER_PX 覆盖导出像素比，但 header.php themeConfig 未注入该字段、functions.php themeFields 无 posterPx 配置项，覆盖能力实际不生效（条件守卫恒跳过、静默回退 2x）；删除死分支与注释，固定 2x 高清导出（运行行为不变）
+- 验证：node --check 通过；源码/部署均无 POSTER_PX 与 pxVal 残留；deploy-sync 重建部署（去注释 20 文件、原样复制 18 文件）；部署与源码去注释后语义一致
+- 同步：源码 → 部署（deploy-sync 重建）→ 公库（robocopy /MIR，GitHub 推送待用户手动执行）；测试站 demo.muzihome.com 需服务器端部署后生效
+- 批次9 远程验证（测试站已部署）：页面基线全部 PASS（首页 200 / 文章 285、271、288、252 全部 200 / 分类页 wlog 200 / 404 页 404）；lantern.post.js 远程无 POSTER_PX 与 pxVal 残留、含 PX = 2，与本地部署字节级一致（48044B）；core.js 基线正常；资产版本 1.4.16；站点证书有效（Let's Encrypt，至 2026-12-19，openssl Verification OK；本机 python urllib 报证书过期为其本地 CA 库问题，非站点问题）
+- 第四轮审查结论：基线全绿（20 PHP / 2 JS / git 干净 / 部署一致）；批次6-8 回归正确、模板迁移引用零残留；CSS 650 规则结构健康（重复选择器均为合法级联、!important 15 处用途明确）；JS 配置契约 header 注入 12 字段全部命中（仅 POSTER_PX 例外，即批次9 修复）；新发现仅 1 项低风险 + 3 观察（CSS 注释同行 / 10 个未使用变量 / LOG 批次7 表述）；详细见 D:\worksyn\dev\docx\LanternPress-深度审查报告-第四轮-2026-10-02.md
+
+- 批次7（功能修复）：独立页面「自定义模板」无法选择归档页/友链页/标签云页——根因：Typecho 自定义模板下拉框只扫描主题根目录下带 `@package custom` 注释的 PHP，而三个模板位于 inc/ 子目录且无该注释；修复：主题根目录新增三个薄入口文件（page-archive.php「归档页」/ page-flinks.php「友链页」/ page-tagcloud.php「标签云页」，文件头标准 @package custom 注释 + need 引入 inc 内完整模板）；deploy-sync.php 增加 page-*.php 去注释豁免（保留 Typecho 识别注释，与 index.php 同策略）；README 独立页面模板章节文件名同步更新（archive-template.php → page-archive.php 等）
+- 验证：3 新文件 + deploy-sync.php php -l 全过；Typecho 内核同款扫描断言通过（3 模板名正确识别）；deploy-sync 重建后部署目录 3 文件存在且 @package custom 注释完整保留
+- 同步：源码 → 部署（deploy-sync 重建）→ 公库（robocopy /MIR，GitHub 推送待用户手动执行）；测试站 demo.muzihome.com 需服务器端部署后生效（后台「自定义模板」下拉即可选择）
+
+- 测试站 demo.muzihome.com 服务器端部署后远程验证（第三轮/批次5/批次6 全部通过，主题目录 /usr/themes/LanternPress，资产 1.4.16，HTTPS 可用 http 自动跳转）：
+  - 页面基线：首页 / 文章285（折叠+目录+海报+评论）/ 文章271（点赞+评论）/ 404 页 全部 PASS；分类页 wlog 仅 8 篇（< 单页 10 篇）无分页组件属单页数据正常行为
+  - poster-proxy（inc/poster-proxy.php）：白名单外域 403、无参数 403、正常代理取图 200；批次6 O2 端口限制远程生效（:6379 / :8443 → 403，:443 / 无端口放行）
+  - 资产内容特征：lantern.core.js（initAvifFallback / fitSidebarToContent minHeight）/ lantern.post.js（文章目录锚点判重 menu-index- / sharePosterBtn）全部命中
+
+- 第三轮全面审查（回归批次5修复 + 未覆盖模板全量精读 + inc 核心/CI/CSS 变量与断点核验）与批次6修复（主题版本号不变，资产版本保持 1.4.16）：
+  - 批次6A（中风险）：Gitee 镜像 workflow 标签推送改逐标签 merge-base 判断（与分支防护一致：Gitee 同名标签领先/分叉时跳过强制推送，不再无条件覆盖私库标签；fetch 补拉 tags refspec）；poster-proxy 目标端口限制（仅允许未指定或 80/443，防白名单域携带任意端口如 :6379 经代理访问非 HTTP 服务，SSRF 加固）
+  - 批次6B（低风险/文档）：README「自定义 JS」注明在主题脚本加载前执行、请勿依赖主题脚本对象（如 window.Lantern）
+- 验证：20 个 PHP php -l 全过；批次6 逻辑断言脚本通过（O1 逐 tag 防护片段 + O2 端口 7 例 + O3 README 说明）；deploy-sync.php 重建部署 + 自校验通过（去注释 23 文件、原样复制 15 文件、注释消除 30,186 字节）；部署目录代码级核验（O2 端口限制已同步）
+- 同步：源码 → 部署（deploy-sync 重建）→ 公库（robocopy /MIR 3 文件，GitHub 推送待用户手动执行）；测试站 demo.muzihome.com（HTTP 基线 200 / 资产 1.4.16）需服务器端部署后远程验证
+- 第三轮审查结论：基线全绿（20 PHP / 2 JS / git 干净 / 部署一致）；N1-N7 修复全部回归正确；新增 3 文件精读无高危（O1 中 / O2 低 / O3 低 / 2 观察）；详细见 D:\worksyn\dev\docx\LanternPress-深度审查报告-第三轮-2026-10-02.md
+
+## 开发版（未发布） - 2026-10-02（批次5）
+
+- 第二轮全面深度审查（回归四批次修复 + 深层边界/安全/一致性）与批次5修复（主题版本号不变，资产版本保持 1.4.16）：
+  - 批次5A（中风险）：post.php 图片属性正则 \bsrc=/\balt= 改负向后瞻 (?<![-\w])（防误匹配 data-src/data-alt，属性乱序时不再替换错误属性）；相关文章 fallback 与相关推荐两处查询补 password 过滤（密码保护文章标题不再出现在相关区块，与 lt_prev_next 行为一致）；分享图协议相对地址（//cdn.com/x）补 https: 前缀（不再拼出 siteUrl//cdn.com/x 错误 URL）
+  - 批次5B（低风险）：文章目录自动锚点 id 判重（正文已有同名 id 时追加后缀，防锚点跳转歧义）；inc/cache 运行时 .htaccess 统一为 Apache 2.2/2.4 双 IfModule 版本（与内容缓存目录一致，2.4 下不再产生无效指令）
+  - 批次5C（低风险/冗余）：内容缓存版本指纹由「mtime」升级为「mtime + 文件大小 + 首尾 64 字节内容摘要」（git checkout/rsync 保留时间戳时内容变更同样触发全站缓存失效），缓存结构版本前缀 3- → 4-；移除 post-content 容器冗余 line-numbers 类（Prism 行号类仅作用于 pre，无功能影响）
+- 验证：20 个 PHP php -l 全过；2 个 JS node --check 全过；N1-N5 逻辑断言脚本通过；deploy-sync.php 重建部署 + 自校验通过（去注释 23 文件、原样复制 15 文件）；部署目录代码级核验（N1/N2/N3/N4/N5 全部同步）
+- 同步：源码 → 部署（deploy-sync 重建）→ 公库（robocopy /MIR，GitHub 推送待用户手动执行）；测试站 demo.muzihome.com（HTTP 基线 200 / 资产 1.4.16）需服务器端部署后远程验证
+- 全量代码审查与四批次修复（主题版本号不变，资产版本保持 1.4.16）：
+  - 批次1（高风险）：归档缓存路径统一至根 cache（发布/修改文章后缓存立即清除，不再等 3600s TTL 过期）；inc/cache 运行时目录创建时补 .htaccess 防护；manifest.php 根目录探测改为逐级上溯（修复独立访问时 PWA manifest 输出默认 name/start_url）；点赞限流 GC 跳过 like_once_ 前缀（修复 1 年 IP 去重窗口被 2 天 GC 清理破坏）
+  - 批次2（中低风险）：Gitee 镜像 workflow 分支推送前对比 Gitee 领先/分叉状态，领先则跳过强制推送（防覆盖私库未同步提交）；fitSidebarToContent 改 min-height 语义（短文+全模块时侧边栏内容不再被裁剪）；lt_is_https 转发协议头仅可信代理白名单内采信（防伪造 X-Forwarded-Proto 导致 Secure Cookie/HSTS 异常）；poster-proxy host 比较大小写归一、Referer 协议头同样走可信代理判断
+  - 批次3（低风险与文档）：README 配置项 20→30 全面刷新、方法二补充「Git 克隆后需先构建」说明；移除限流/归档缓存 unserialize 回退（仅 json 解析，防对象注入面）；AVIF 降级脚本自 footer 内联迁入 lantern.core.js（initAvifFallback 统一管理）；点赞 token 双候选校验（当前请求 URL + Referer，隐私模式/内嵌浏览器不再 403）
+  - 批次4（重构）：loadThumb 增加 banner 参数，统一缩略图选择链（index.recommend 复用，消除重复逻辑）；header.php 页面标题 <title>/meta 两组拼接合并；index.list.php 游标回绕契约加注释说明（已核对 Typecho 1.3 源码）
+- 验证：20 个 PHP php -l 全过；2 个 JS node --check 全过；deploy-sync.php 重建部署 + 自校验通过；部署目录代码级核验（H1/H2/M1/M3/L2/L6/L7/R2 全部同步）；H1/H2/M1/R2/R3 逻辑断言脚本通过
+- 同步：源码 → 部署（deploy-sync 重建）→ 公库（robocopy /MIR，GitHub 推送待用户手动执行）；测试站 demo.muzihome.com（HTTP 基线 200 / 资产 1.4.16）需服务器端部署后远程验证
+- 修复：deploy-sync.php 增加 .gitattributes 排除（版本控制配置文件不随部署包分发，部署目录已清理）
+
 ## v2.4.0 - 2026-10-02
 
 - 生成海报功能（canvas 报纸风竖版海报：16:9 封面/标题/作者+日期/摘要/LOGO或站点名/二维码，下载 PNG；封面优先级 主图→正文首图→随机图；poster-proxy 代理兜底；海报 LOGO 可后台配置）

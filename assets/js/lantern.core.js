@@ -570,11 +570,51 @@ function fitSidebarToContent() {
     var s = document.getElementById('postSidebar');
     if (!c || !s) return;
     if (window.matchMedia('(min-width: 1151px)').matches) {
-        s.style.height = c.offsetHeight + 'px';
+        // min-height 语义：正文更高则侧边栏跟随正文高度；侧边栏内容更高时自然撑开，不被裁剪
+        s.style.minHeight = c.offsetHeight + 'px';
     } else {
-        s.style.height = '';
+        s.style.minHeight = '';
     }
 }
+// AVIF 降级：浏览器不支持 avif 时依次回退 webp → jpg/jpeg/png/gif/bmp/tif/tiff（自 footer 内联迁入统一管理）
+function initAvifFallback() {
+    var d = document, q = 'img[src*=".avif"]',
+        s = 'data:image/avif;base64,AAAAIGZ0eXBhdmlmAAAAAGF2aWZtaXNwMmNjb2xpc29tYw==';
+    function t(c) {
+        var i = new Image();
+        i.onload = function () { c(i.width > 0); };
+        i.onerror = function () { c(false); };
+        i.src = s;
+    }
+    function r() {
+        var imgs = d.querySelectorAll(q);
+        for (var j = 0; j < imgs.length; j++) {
+            (function (img) {
+                var exts = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tif', '.tiff'], idx = 0, oldErr = img.onerror;
+                img.onerror = function () {
+                    var base = img.src.replace(/\.(webp|avif)(\?|$)/, '$2');
+                    function n() {
+                        if (idx >= exts.length) { if (oldErr) oldErr.call(img); return; }
+                        var ts = base.replace(/(\?|$)/, exts[idx] + '$1'); idx++;
+                        var ti = new Image();
+                        ti.onload = function () { img.src = ts; };
+                        ti.onerror = n;
+                        ti.src = ts;
+                    }
+                    n();
+                };
+                img.src = img.src.replace(/\.avif(\?|$)/, '.webp$1');
+            })(imgs[j]);
+        }
+    }
+    t(function (u) {
+        if (!u) {
+            if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', r);
+            else r();
+        }
+    });
+}
+initAvifFallback();
 window.addEventListener('load', () => {
     fitSidebarToContent();
     // 图片懒加载/字体加载后正文高度可能变化，延迟再对齐一次

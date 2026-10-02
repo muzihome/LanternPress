@@ -196,7 +196,13 @@ const stack = [root];
 const levels = [0];
 titles.forEach((node, index) => {
 if (!node.id) {
-node.id = 'menu-index-' + (index + 1);
+let autoId = 'menu-index-' + (index + 1);
+let suffix = 2;
+// 自动 id 判重：正文已存在同名 id 时追加后缀，避免锚点跳转歧义
+while (document.getElementById(autoId)) {
+autoId = 'menu-index-' + (index + 1) + '-' + suffix++;
+}
+node.id = autoId;
 }
 const level = parseInt(node.tagName.charAt(1), 10) || 1;
 const li = document.createElement('li');
@@ -1214,13 +1220,7 @@ proto.renderPoster = function (coverImg, logoImg) {
 			summary = Array.from(summary).slice(0, 150).join('');
 		}
 		const canvas = document.createElement('canvas');
-		// 导出像素比（2x 高清；可通过 LANTERTOWN_CONFIG.POSTER_PX 覆盖为 1/1.5/2 平衡体积与清晰度）
-		let pxVal = 2;
-		if (window.LANTERTOWN_CONFIG && window.LANTERTOWN_CONFIG.POSTER_PX) {
-			const n = parseInt(window.LANTERTOWN_CONFIG.POSTER_PX, 10);
-			if (!isNaN(n) && n >= 1 && n <= 3) pxVal = n;
-		}
-		const PX = pxVal;
+		const PX = 2; // 导出像素比固定 2x（高清）
 		canvas.width = 750;
 		let ctx = canvas.getContext('2d');
 		// 预分行：标题（bold 32px）与摘要（24px）必须先设对应字体再量宽（量度与绘制字体必须一致），

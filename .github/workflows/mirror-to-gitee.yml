@@ -40,15 +40,34 @@ jobs:
           git remote add gitee git@gitee.com:muzinext/LanternPress.git
           cd ..
 
-      - name: Push filtered branches to Gitee
+      - name: Push filtered branches to Gitee (skip if Gitee ahead)
         run: |
           cd ./filter_work
-          git push gitee refs/heads/*:refs/heads/* --force
+          git fetch gitee --prune '+refs/heads/*:refs/remotes/gitee/*' '+refs/tags/*:refs/remotes/gitee/tags/*' || true
+          for br in $(git for-each-ref --format='%(refname:short)' refs/heads); do
+            # 若 Gitee 同分支领先或分叉（本地历史未包含其 HEAD），跳过强制推送，避免覆盖私库提交
+            if git rev-parse --verify -q "refs/remotes/gitee/${br}" >/dev/null 2>&1; then
+              if ! git merge-base --is-ancestor "refs/remotes/gitee/${br}" "$br" 2>/dev/null; then
+                echo "SKIP ${br}: gitee/${br} ahead or diverged, force push aborted"
+                continue
+              fi
+            fi
+            git push gitee "${br}:refs/heads/${br}" --force
+          done
 
-      - name: Push original tags (tags cannot filter files)
+      - name: Push original tags (skip if Gitee tag ahead or diverged)
         run: |
           cd ./filter_work
-          git push gitee refs/tags/*:refs/tags/* --force
+          for tg in $(git for-each-ref --format='%(refname:short)' refs/tags); do
+            # 与分支同理：Gitee 同名标签领先或分叉（本地历史未包含其目标提交）时跳过，避免覆盖私库标签
+            if git rev-parse --verify -q "refs/remotes/gitee/tags/${tg}" >/dev/null 2>&1; then
+              if ! git merge-base --is-ancestor "refs/remotes/gitee/tags/${tg}" "${tg}" 2>/dev/null; then
+                echo "SKIP TAG ${tg}: gitee/tags/${tg} ahead or diverged, force push aborted"
+                continue
+              fi
+            fi
+            git push gitee "refs/tags/${tg}:refs/tags/${tg}" --force
+          done
 
       - name: Prune branches deleted on GitHub
         run: |

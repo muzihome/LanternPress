@@ -62,23 +62,12 @@ if (!defined('__TYPECHO_ROOT_DIR__')) exit;
                 return ($orderMap[(int) $a['cid']] ?? PHP_INT_MAX) <=> ($orderMap[(int) $b['cid']] ?? PHP_INT_MAX);
             });
 
-            $indexThumbs = lt_lines($this->options->indexThumbs ?? '');
-            $thumbCount = count($indexThumbs);
-            $defaultThumb = rtrim((string) $this->options->themeUrl, '/') . '/assets/img/blog_bg.jpg';
-
             foreach ($rows as $row) {
                 $cid = (int) $row['cid'];
                 $fields = $fieldMap[$cid] ?? [];
 
-                $banner = trim(lt_text($fields['bannerUrl'] ?? ''));
-                if ($banner !== '') {
-                    $thumb = lt_safe_url($banner);
-                } elseif ($thumbCount > 0) {
-                    $thumb = lt_safe_url($indexThumbs[$cid % $thumbCount]);
-                } else {
-                    $img = lt_content_image(lt_text($row['text'] ?? ''));
-                    $thumb = $img !== '' ? $img : lt_safe_url($defaultThumb);
-                }
+                // 统一走 loadThumb 选择链：banner → indexThumbs → 正文首图 → 默认图（与列表页/文章页一致）
+                $thumb = loadThumb(lt_text($row['text'] ?? ''), $this->options, $cid, trim(lt_text($fields['bannerUrl'] ?? '')));
 
                 $desc = trim(lt_text($fields['articleDesc'] ?? ''));
                 if ($desc === '') {

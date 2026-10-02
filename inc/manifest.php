@@ -13,9 +13,14 @@ ob_start();
 
 
 if (!defined('__TYPECHO_ROOT_DIR__')) {
-    $ltRoot = realpath(__DIR__ . '/../../../');
-    if ($ltRoot !== false && is_file($ltRoot . '/config.inc.php')) {
-        define('__TYPECHO_ROOT_DIR__', $ltRoot);
+    // 逐级上溯探测 Typecho 根目录（config.inc.php 所在），兼容子目录/多级部署
+    $ltProbe = __DIR__;
+    for ($i = 0; $i < 6; $i++) {
+        $ltProbe = dirname($ltProbe);
+        if (is_file($ltProbe . '/config.inc.php')) {
+            define('__TYPECHO_ROOT_DIR__', $ltProbe);
+            break;
+        }
     }
 }
 

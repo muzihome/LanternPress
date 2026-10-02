@@ -54,9 +54,12 @@ $siteTitle = lt_text($this->options->title ?? '');
 $siteUrl = rtrim(lt_text($this->options->siteUrl), '/');
 
 
+// 页面标题：<title> 用 HTML 转义版，meta/JSON-LD 用原文版；两组共用同一拼接结构（消除重复逻辑）
 $pageTitleParts = [];
+$pageTitleMetaParts = [];
 if ($currentPage > 1) {
     $pageTitleParts[] = '第 ' . $currentPage . ' 页';
+    $pageTitleMetaParts[] = '第 ' . $currentPage . ' 页';
 }
 ob_start();
 $this->archiveTitle(
@@ -72,16 +75,14 @@ $this->archiveTitle(
 $archiveTitleText = trim((string) ob_get_clean());
 if ($archiveTitleText !== '') {
     $pageTitleParts[] = lt_esc_html($archiveTitleText);
+    $pageTitleMetaParts[] = $archiveTitleText;
 }
-
-$pageTitleParts[] = lt_esc_html($siteTitle);
+if ($siteTitle !== '') {
+    $pageTitleParts[] = lt_esc_html($siteTitle);
+    $pageTitleMetaParts[] = $siteTitle;
+}
 $pageTitle = implode(' - ', array_filter($pageTitleParts));
-
-$pageTitleMeta = implode(' - ', array_filter(array_merge(
-    $currentPage > 1 ? ['第 ' . $currentPage . ' 页'] : [],
-    $archiveTitleText !== '' ? [$archiveTitleText] : [],
-    $siteTitle !== '' ? [$siteTitle] : []
-)));
+$pageTitleMeta = implode(' - ', array_filter($pageTitleMetaParts));
 
 
 

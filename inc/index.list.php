@@ -37,6 +37,10 @@ $ltEagerRendered = false;
 <?php
             $ltBatchFields = [];
             if ($this->have()) {
+                // 预取字段：先完整遍历一遍收集 cid（批量查 fields 表避免 N+1）；
+                // 依赖 Typecho Widget::next() 的既有契约——游标遍历到末尾后自动 reset 回开头
+                // （已核对 Typecho 1.3 源码：next() 在序列耗尽时 reset($stack) 并返回 false），
+                // 故下方渲染循环可再次 next() 从头输出
                 $ltCids = [];
                 while ($this->next()) {
                     $ltCids[] = (int) $this->cid;
