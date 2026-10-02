@@ -28,7 +28,7 @@ jobs:
           echo "${GITEE_PRIVATE_KEY}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan gitee.com >> ~/.ssh/known_hosts
-          git config --global user.name "Mirror‑Bot"
+          git config --global user.name "Mirror-Bot"
           git config --global user.email "mirror@no-reply.local"
 
       - name: Create temp clone & remove .github from whole history
