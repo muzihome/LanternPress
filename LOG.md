@@ -1,6 +1,6 @@
 # LanternPress 更新日志
 
-## v2.4.0 - 2026-09-21
+## v2.4.0 - 2026-10-02
 
 - 生成海报功能（canvas 报纸风竖版海报：16:9 封面/标题/作者+日期/摘要/LOGO或站点名/二维码，下载 PNG；封面优先级 主图→正文首图→随机图；poster-proxy 代理兜底；海报 LOGO 可后台配置）
 - 长文折叠（正文超阈值折叠显示「阅读剩余 X%」胶囊按钮点击展开；后台 4 项配置，移动端按视口折算）
@@ -25,18 +25,14 @@
 
 ## v2.3.0 - 2026-09-21
 
-- 上线前最终审查：后台配置面板 24 项渲染与保存、密码文章三态（未解锁/正确/错误）、瀑布流加载、归档/友链页模板、manifest/feed、真实数据热门回归、MySQL 方言复核全部通过
-- 文档修正：README 环境要求 PHP 最低版本 7.4 → 8.0（主题使用 str_contains，PHP 7 无法运行，与 v2.2.1 声明对齐）
-
-## v2.3.0 - 2026-09-20
-
-- 备份导入 server error 修复：Typecho 备份无评论段时旧评论残留与内容错配，最新评论模块 permalink 生成 TypeError 导致 500；主题侧 try/catch 跳过不可用评论，并修正 Widget_Comments_Recent 参数 size→pageSize
-
-- 全面深度审查修复：热门文章模块引用未定义常量 Typecho\Db::JOIN_LEFT 导致条目全空，改为 LEFT_JOIN；LEFT JOIN 条件移入 ON（带其它字段无 ltViews 的文章不再被排除）；热门链接改为 Router::url 生成真实 URL（原为 #）
-- 标签云页模板同步修复 2 处 JOIN_LEFT 常量；WSL 动态复验：热门 5 条、标签云页 5 标签、三态布局、导航卡、点赞/评论/搜索链路全部通过
-
-## v2.3.0 - 2026-09-19
-
+- 安全加固：点赞接口 CSRF 防护、评论表单令牌规范化、缓存序列化格式加固
+- 首页推荐轮播：自动轮播 4 秒、控制按钮悬停显示 / 离开自动隐藏
+- 移动端优化：文章页与独立页面在移动端不再加载目录树
+- PWA：新增 Web App Manifest 与主题图标
+- 无障碍：跳转链接、键盘焦点、轮播箭头语义化、对比度、目录折叠键盘可达、减弱动态效果
+- 性能：内容文件缓存、列表查询优化、Prism 按需加载、首屏 LCP 优化、限流文件回收
+- SEO：全站唯一 h1、结构化数据、归档描述、feed / 搜索路由化
+- 兼容：适配 Typecho 1.3.0 与 PHP 8.2+；修复密码保护、阅读量统计、搜索关键词等缺陷
 - 文章页正文区重构：来源框、赞/打赏按钮、分享工具栏、底部广告位、上一篇/下一篇卡片导航（对齐新设计稿）
 - 新增文章页侧边栏（10 模块：目录/搜索/微言/广告/分类/最新/热门/最新评论/标签云/站点信息）
 - 文章页三种布局（右侧边栏/左侧边栏/无侧边栏）可在后台外观设置切换
@@ -47,17 +43,11 @@
 - 侧边栏断点优化（平板保留侧边栏）：原 `@media(max-width:1150px)` 整体单列 + 隐藏侧边栏拆分为两块——平板 `768-1150px` 保留三态布局与侧边栏（容器收窄 1000px、padding 16px、目录 sticky 继续跟随）；移动端 `≤767px` 单列 + `display:none !important` 隐藏侧边栏（与 JS isMobile 767px 断点一致）
 - 死代码清理（CSS 瘦身）：删除 10 组旧布局残留死类选择器（`#image-list` 图库 21 条、`.archive-list .archives/.archive-post` 归档 18 条、`.article-writer` 作者卡片 9 条、`.post-recommend` 推荐 9 条、`.tags-container/.terms-*` 标签 7 条、`.category-container/.category-list` 分类 5 条、`.flink-img/.flink-name` 友链 3 条、`.footer-police` 1 条、`.social-link` 1 条、`.share-weixin` 1 条），共删除约 334 行；同时修复微信分享 hover 品牌色（`.share-weixin` 旧类名改 `.share-wechat`，与 post.php 实际按钮类一致，微信图标 hover 恢复 #07c160）；保留 `.archive-list`/`.archive-page`/`.flinks-container` 等活类；经 WSL 沙箱 42 项断言回归 0 失败
 - head meta 元信息清理（性能/SEO/安全统筹）：移除 `X-UA-Compatible(IE=edge)`（IE 已停止支持）；移除主题 twitter:card/title/description/image 全套（X 在国内不可用，og 已覆盖分享卡片功能）；关闭 Typecho 内核 header() 冗余输出——`generator`（Typecho 1.3.0 版本指纹→安全隐患）、`template`（主题名指纹）、`pingback`/`EditURI(RSD)`/`wlwmanifest`（XML-RPC 时代遗留，Windows Live Writer 已死）、`rss1(RDF)`/`rss2`/`atom` 三条聚合链接（保留主题单条 RSS 2.0）、`keywords`（meta keywords 已无 SEO 价值）、`social` 全套（内核 og:type/url/twitter 系列/twitter:domain 与主题 og 重复）；canonical 去重——单页 canonical 由内核输出（Archive::header 无条件输出）、主题仅非单页输出（首页/分类/标签/搜索等），消除单页重复 canonical；description 由主题独占输出（内核恒传空覆盖 plainExcerpt 路径）；修复 RSS feed URL（内核路由 `/feed[feed:string:0]` 无参生成 `{feed}` 字面量坏链接，改为传 `['feed'=>'']` 生成 `/feed`，坏值回退 `siteUrl.'/feed/'`）；保留 charset/renderer(webkit 国产浏览器)/viewport/preconnect/favicon/manifest(PWA)/robots(搜索页 noindex)/canonical/description/og 系列/JSON-LD(Article+WebSite+BreadcrumbList)/commentReply 脚本；经 WSL 沙箱 meta_check 逐页核验（canonical 各页 1 条、description 非密码页 1 条、generator/template/wlwmanifest/RSD/pingback/twitter/keywords 均 0 条、feed 无 `{feed}`）+ 42 项断言回归 0 失败
-
-## v2.3.0 - 2026-09-17
-
-- 安全加固：点赞接口 CSRF 防护、评论表单令牌规范化、缓存序列化格式加固
-- 首页推荐轮播：自动轮播 4 秒、控制按钮悬停显示 / 离开自动隐藏
-- 移动端优化：文章页与独立页面在移动端不再加载目录树
-- PWA：新增 Web App Manifest 与主题图标
-- 无障碍：跳转链接、键盘焦点、轮播箭头语义化、对比度、目录折叠键盘可达、减弱动态效果
-- 性能：内容文件缓存、列表查询优化、Prism 按需加载、首屏 LCP 优化、限流文件回收
-- SEO：全站唯一 h1、结构化数据、归档描述、feed / 搜索路由化
-- 兼容：适配 Typecho 1.3.0 与 PHP 8.2+；修复密码保护、阅读量统计、搜索关键词等缺陷
+- 备份导入 server error 修复：Typecho 备份无评论段时旧评论残留与内容错配，最新评论模块 permalink 生成 TypeError 导致 500；主题侧 try/catch 跳过不可用评论，并修正 Widget_Comments_Recent 参数 size→pageSize
+- 全面深度审查修复：热门文章模块引用未定义常量 Typecho\Db::JOIN_LEFT 导致条目全空，改为 LEFT_JOIN；LEFT JOIN 条件移入 ON（带其它字段无 ltViews 的文章不再被排除）；热门链接改为 Router::url 生成真实 URL（原为 #）
+- 标签云页模板同步修复 2 处 JOIN_LEFT 常量；WSL 动态复验：热门 5 条、标签云页 5 标签、三态布局、导航卡、点赞/评论/搜索链路全部通过
+- 上线前最终审查：后台配置面板 24 项渲染与保存、密码文章三态（未解锁/正确/错误）、瀑布流加载、归档/友链页模板、manifest/feed、真实数据热门回归、MySQL 方言复核全部通过
+- 文档修正：README 环境要求 PHP 最低版本 7.4 → 8.0（主题使用 str_contains，PHP 7 无法运行，与 v2.2.1 声明对齐）
 
 ## v2.2.2 - 2026-09-16
 
