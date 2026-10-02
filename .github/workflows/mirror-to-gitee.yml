@@ -18,6 +18,12 @@ jobs:
         run: |
           python3 -m pip install git-filter-repo
 
+      # git-filter-repo 强制要求已配置 user.name/user.email，否则直接报错
+      - name: Configure git identity
+        run: |
+          git config --global user.name "Mirror-Bot"
+          git config --global user.email "mirror@no-reply.local"
+
       - name: Create temp clone & remove .github from whole history
         run: |
           git clone --no-local . ./filter_work
