@@ -3,8 +3,11 @@
 一款经典报纸复古风 Typecho 主题，适配 PHP 8 与 MySQL 8。
 
 > 作者：木子小鱼
+
 > 项目地址：https://github.com/muzihome/LanternPress
+
 > 当前版本：v2.4.0
+
 > 更新日志：[LOG.md](./LOG.md)
 
 ---
@@ -304,7 +307,7 @@ A：备份当前主题目录 → 覆盖新版本文件 → 登录后台 → 外�
 
 ## 更新日志
 
-对外更新日志请查看 [LOG.md](./LOG.md)。
+更新日志请查看 [LOG.md](./LOG.md)。
 
 **近期版本：**
 - **v2.4.0**（2026-10-02）：文章页底部布局重构（7 分享工具栏 + 阅读/评论/收藏统计 + 相关推荐且不推荐自己 + 生成海报）；后台新增「文章页侧边栏模块」多选（10 模块）；侧边栏去除内部滚动条、文章目录样式与页面协调
@@ -325,7 +328,7 @@ A：备份当前主题目录 → 覆盖新版本文件 → 登录后台 → 外�
 
 本主题基于原始作者 TypeRenew/Yangsh888 的 LanternTown 主题二次开发，遵循原始项目许可证。
 
-二次开发部分由**[木子小鱼](https://muzihome.com)** 维护，欢迎提交 [Issue](https://github.com/muzihome/LanternPress/issues) 和 [Pull Request](https://github.com/muzihome/LanternPress/pulls)。
+二次开发部分由[木子小鱼](https://muzihome.com)维护，欢迎提交 [Issue](https://github.com/muzihome/LanternPress/issues) 和 [Pull Request](https://github.com/muzihome/LanternPress/pulls)。
 
 **项目地址：** [https://github.com/muzihome/LanternPress](https://github.com/muzihome/LanternPress)
 
