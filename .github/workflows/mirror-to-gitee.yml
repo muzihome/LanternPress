@@ -1,10 +1,12 @@
 name: Mirror-to-Gitee
+
 on:
   push:
   delete:
   workflow_dispatch:
   schedule:
     - cron: '0 0 * * *'
+
 jobs:
   mirror:
     runs-on: ubuntu-latest
@@ -18,9 +20,14 @@ jobs:
         run: |
           python3 -m pip install git-filter-repo
 
-      # git-filter-repo 强制要求已配置 user.name/user.email，否则直接报错
-      - name: Configure git identity
+      - name: Setup SSH for Gitee
+        env:
+          GITEE_PRIVATE_KEY: ${{ secrets.GITEE_PRIVATE_KEY }}
         run: |
+          mkdir -p ~/.ssh
+          echo "${GITEE_PRIVATE_KEY}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan gitee.com >> ~/.ssh/known_hosts
           git config --global user.name "Mirror-Bot"
           git config --global user.email "mirror@no-reply.local"
 
@@ -29,28 +36,21 @@ jobs:
           git clone --no-local . ./filter_work
           cd ./filter_work
           git filter-repo --path .github --invert-paths --force
+          git remote remove gitee || true
+          git remote add gitee git@gitee.com:muzinext/LanternPress.git
           cd ..
 
-      # 海外 runner 直连 Gitee SSH:22 会被防火墙重置，改用 HTTPS + 私人令牌（GITEE_TOKEN）
-      - name: Push filtered branches to Gitee (HTTPS)
-        env:
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+      - name: Push filtered branches to Gitee
         run: |
           cd ./filter_work
-          git remote remove gitee || true
-          git remote add gitee https://muzinext:${GITEE_TOKEN}@gitee.com/muzinext/LanternPress.git
           git push gitee refs/heads/*:refs/heads/* --force
 
       - name: Push original tags (tags cannot filter files)
-        env:
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         run: |
           cd ./filter_work
           git push gitee refs/tags/*:refs/tags/* --force
 
       - name: Prune branches deleted on GitHub
-        env:
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         run: |
           cd ./filter_work
           LOCAL_BRANCHES=$(git for-each-ref --format='%(refname:short)' refs/heads)
