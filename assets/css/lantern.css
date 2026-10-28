@@ -698,10 +698,183 @@ body .site-container .post .post-container .post-content .flinks-container{
   width:100%;
   display:flex;
   flex-wrap:wrap;
+  gap:14px;
 }
-body .site-container .post .post-container .post-content .flinks-container a{
+/* 友链卡片（自动解析模式，批次16 美化） */
+body .site-container .post .post-container .post-content .flinks-container .flink-card{
+  flex:0 0 calc(25% - 10.5px);
+  max-width:calc(25% - 10.5px);
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  gap:12px;
+  min-height:68px;
+  height:68px;
+  padding:14px 16px;
+  border:1px solid var(--border-line);
+  border-radius:10px;
+  background:var(--card-bg, rgba(128,128,128,.04));
+  text-decoration:none;
+  box-sizing:border-box;
+  -webkit-transition:border-color .2s,box-shadow .2s,-webkit-transform .2s;
+  transition:border-color .2s,box-shadow .2s,-webkit-transform .2s;
+  transition:border-color .2s,box-shadow .2s,transform .2s;
+  transition:border-color .2s,box-shadow .2s,transform .2s,-webkit-transform .2s;
+}
+body .site-container .post .post-container .post-content .flinks-container .flink-card:hover{
+  border-color:var(--accent);
+  box-shadow:0 6px 20px rgba(0,0,0,.12),0 2px 6px rgba(0,0,0,.06);
+  -webkit-transform:translateY(-3px);
+  -ms-transform:translateY(-3px);
+  transform:translateY(-3px);
+}
+body .site-container .post .post-container .post-content .flinks-container .flink-card:active{
+  box-shadow:0 2px 8px rgba(0,0,0,.10);
+  -webkit-transform:translateY(-1px) scale(.98);
+  -ms-transform:translateY(-1px) scale(.98);
+  transform:translateY(-1px) scale(.98);
+  -webkit-transition-duration:.1s;
+  transition-duration:.1s;
+}
+body .site-container .post .post-container .post-content .flinks-container .flink-card .flink-icon{
+  flex:0 0 38px;
+  width:38px;
+  height:38px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:50%;
+  background:rgba(128,128,128,.10);
+  color:var(--accent);
+  font-size:17px;
+  font-weight:600;
+  line-height:1;
+}
+/* 友链申请：头像图片复用圆形徽标盒（object-fit 裁切，背景置空） */
+body .site-container .post .post-container .post-content .flinks-container .flink-card img.flink-icon{
+  background:transparent;
+  object-fit:cover;
+  margin:0;
+  padding:0;
+}
+/* 友链申请 */
+body .site-container .post .post-container .post-content .flinks-apply{
+  margin-top:28px;
+}
+body .site-container .post .post-container .post-content .flinks-apply .response{
+  text-align:center;
+  font-size:24px;
+  font-weight:700;
+  margin:0 0 10px;
+  color:var(--text);
+}
+body .site-container .post .post-container .post-content .flinks-apply .flinks-apply-hint{
+  font-size:13px;
+  color:var(--text-soft);
+  margin:0 0 16px;
+}
+/* 友链申请表单：下划线风格，字段间距统一 */
+body .site-container .post .post-container .post-content .flinks-apply .flinks-apply-row{
+  display:flex;
+  gap:14px;
+  width:100%;
+}
+body .site-container .post .post-container .post-content .flinks-apply .flinks-apply-row .input-control{
+  flex:1 1 0;
+  min-width:0;
+}
+body .site-container .post .post-container .post-content .flinks-apply .comment-form .input-control{
+  width:100%;
+  height:40px;
+  margin-bottom:14px;
+  padding:0 2px;
+  border:none;
+  border-bottom:1px solid var(--border-line);
+  border-radius:0;
+  background:transparent;
+  font-size:14px;
+  color:var(--text);
+  outline:0;
+  -webkit-transition:border-color .3s;
+  transition:border-color .3s;
+}
+body .site-container .post .post-container .post-content .flinks-apply .comment-form .input-control:focus{
+  border-bottom-color:var(--accent);
+}
+body .site-container .post .post-container .post-content .flinks-apply .comment-form textarea.form-control{
+  width:100%;
+  height:110px;
+  padding:10px 2px;
+  border:none;
+  border-bottom:1px solid var(--border-line);
+  border-radius:0;
+  background:transparent;
+  font-size:14px;
+  line-height:26px;
+  color:var(--text);
+  resize:none;
+  outline:0;
+  margin-bottom:6px;
+  -webkit-transition:border-color .3s;
+  transition:border-color .3s;
+}
+body .site-container .post .post-container .post-content .flinks-apply .comment-form textarea.form-control:focus{
+  border-bottom-color:var(--accent);
+}
+body .site-container .post .post-container .post-content .flinks-apply .comment-form .submit{
+  width:100%;
+  height:42px;
+  margin-top:14px;
+  font-size:15px;
+  font-weight:600;
+  letter-spacing:2px;
+  border:1px solid var(--border-line);
+  border-radius:6px;
+  background:transparent;
+  color:var(--text);
+  cursor:pointer;
+  -webkit-transition:background-color .3s,color .3s,border-color .3s;
+  transition:background-color .3s,color .3s,border-color .3s;
+}
+body .site-container .post .post-container .post-content .flinks-apply .comment-form .submit:hover{
+  border-color:var(--accent);
+  color:var(--accent);
+}
+@media(max-width:1200px){
+  body .site-container .post .post-container .post-content .flinks-container .flink-card{
+    flex:0 0 calc(33.333% - 10px);
+    max-width:calc(33.333% - 10px);
+  }
+}
+@media(max-width:900px){
+  body .site-container .post .post-container .post-content .flinks-container .flink-card{
+    flex:0 0 calc(50% - 7px);
+    max-width:calc(50% - 7px);
+  }
+}
+@media(max-width:767px){
+  body .site-container .post .post-container .post-content .flinks-apply .flinks-apply-row{
+    flex-direction:column;
+    gap:0;
+  }
+  body .site-container .post .post-container .post-content .flinks-container .flink-card{
+    flex:0 0 100%;
+    max-width:100%;
+  }
+}
+body .site-container .post .post-container .post-content .flinks-container .flink-card .flink-name{
+  font-size:14px;
+  font-weight:600;
+  color:var(--text);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  min-width:0;
+}
+/* 自定义 HTML 模式兜底（保持旧行为：4/3/2 列居中放大） */
+body .site-container .post .post-container .post-content .flinks-container > a:not(.flink-card){
   width:calc(100% /4 - 31px);
-  margin:30px 15px;
+  margin:15px;
   display:flex;
   flex-direction:column;
   align-items:center;
@@ -715,16 +888,16 @@ body .site-container .post .post-container .post-content .flinks-container a{
   transition-timing-function:ease-out;
 }
 @media(max-width:950px){
-  body .site-container .post .post-container .post-content .flinks-container a{
+  body .site-container .post .post-container .post-content .flinks-container > a:not(.flink-card){
     width:calc(100% /3 - 31px);
   }
 }
 @media(max-width:767px){
-  body .site-container .post .post-container .post-content .flinks-container a{
+  body .site-container .post .post-container .post-content .flinks-container > a:not(.flink-card){
     width:calc(100% /2 - 31px);
   }
 }
-body .site-container .post .post-container .post-content .flinks-container a:hover{
+body .site-container .post .post-container .post-content .flinks-container > a:not(.flink-card):hover{
   -webkit-transform:scale(1.1);
   -ms-transform:scale(1.1);
   transform:scale(1.1);
@@ -1748,10 +1921,6 @@ body .footer{
   color:#cc493d;
   cursor:default;
   opacity:1;
-}
-.lt-like-icon{
-  font-size:16px;
-  margin-right:2px;
 }
 .lt-like-count{
   font-weight:bold;
@@ -3309,10 +3478,14 @@ body .site-container .post .post-container .post-breadcrumb{
 body .site-container .post .post-container .post-breadcrumb a{
   color:var(--text-soft);
   text-decoration:none;
-  transition:color .2s;
+  padding:1px 5px;
+  margin:-1px -5px;
+  border-radius:4px;
+  transition:color .2s,background-color .2s;
 }
 body .site-container .post .post-container .post-breadcrumb a:hover{
   color:var(--accent);
+  background-color:rgba(128,128,128,.09);
 }
 body .site-container .post .post-container .post-breadcrumb .breadcrumb-sep{
   color:var(--border-line);
@@ -3432,9 +3605,6 @@ body #background-layer .popup-container .popup-body .poster-popup.poster-error .
   opacity:1;
   transform:translateX(-50%) translateY(0);
 }
-.lt-toast-error{
-  background:rgba(204,61,61,.92);
-}
 /* 长文折叠：正文超长时截断 + 渐变遮罩 + 「阅读剩余 X%」按钮（高度由 JS 注入 --lt-fold-height） */
 .post-fold-wrap{
   position:relative;
@@ -3482,3 +3652,4 @@ body #background-layer .popup-container .popup-body .poster-popup.poster-error .
   background:var(--accent);
   border-color:var(--accent);
 }
+

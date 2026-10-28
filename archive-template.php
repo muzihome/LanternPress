@@ -12,7 +12,7 @@ $this->need('header.php');
 
 
 // 归档缓存统一落在主题根目录 cache/（与 functions.php 发布清除路径同源）
-$cacheDir = dirname(__DIR__) . '/cache';
+$cacheDir = __DIR__ . '/cache';
 $cacheFile = $cacheDir . '/archive-cache.php';
 $cachePrefix = '<?php exit; ?>';
 $cacheTtl = 3600;
@@ -54,6 +54,7 @@ if ($groups === null) {
                 ->from('table.contents')
                 ->where('type = ?', 'post')
                 ->where('status = ?', 'publish')
+                ->where('created <= ?', time())
                 ->where('password IS NULL OR password = ?', '')
                 ->order('table.contents.created', \Typecho\Db::SORT_DESC)
         );

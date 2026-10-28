@@ -14,8 +14,8 @@ $siteTitle = lt_text($this->options->title ?? '');
 // 文章页/独立页才加载文章页专属脚本（lantern.post.js；微信二维码 qrcode.min.js 已改为首次使用时懒加载）
 $ltIsSingleFooter = $this->is('post') || $this->is('page');
 
-$customJsEscaped = $customJs !== '' ? preg_replace('/<\/(script|style)>/i', '<\\/$1>', $customJs) : '';
-$statisticsCodeEscaped = $statisticsCode !== '' ? preg_replace('/<\/(script|style)>/i', '<\\/$1>', $statisticsCode) : '';
+$customJsEscaped = lt_escape_inline_code($customJs);
+$statisticsCodeEscaped = lt_escape_inline_code($statisticsCode);
 
 ?>
 </main>

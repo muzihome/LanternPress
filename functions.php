@@ -178,16 +178,76 @@ function themeConfig(\Typecho\Widget\Helper\Form $form): void
         ],
         ['catalog', 'search', 'memos', 'ad', 'category', 'recent', 'hot', 'comments', 'tag', 'siteinfo'],
         _t('文章页侧边栏模块'),
-        _t('勾选需要在文章页/独立页面侧边栏显示的模块，取消勾选则隐藏对应模块；「文章目录」模块同时受文章编辑页「是否开启文章目录树」字段控制。未配置时默认全部显示')
+        _t('勾选需要在文章页侧边栏显示的模块，取消勾选则隐藏对应模块；「文章目录」模块同时受文章编辑页「是否开启文章目录树」字段控制。未配置时默认全部显示')
     );
     $form->addInput($sidebarPostModules);
+
+    $sidebarPageModules = new \Typecho\Widget\Helper\Form\Element\Checkbox(
+        'sidebarPageModules',
+        [
+            'catalog' => _t('文章目录'),
+            'search' => _t('搜索框'),
+            'memos' => _t('微言'),
+            'ad' => _t('广告位'),
+            'category' => _t('分类目录'),
+            'recent' => _t('最新文章'),
+            'hot' => _t('热门文章'),
+            'comments' => _t('最新评论'),
+            'tag' => _t('标签云'),
+            'siteinfo' => _t('站点信息'),
+        ],
+        ['catalog', 'search', 'memos', 'ad', 'category', 'recent', 'hot', 'comments', 'tag', 'siteinfo'],
+        _t('独立页面侧边栏模块'),
+        _t('勾选需要在独立页面侧边栏显示的模块，与文章页相互独立；「文章目录」模块同时受页面编辑页「是否开启文章目录树」字段控制。从未保存过本配置时跟随「文章页侧边栏模块」设置，保存后按此处勾选独立生效')
+    );
+    $form->addInput($sidebarPageModules);
+
+    $sidebarIndexModules = new \Typecho\Widget\Helper\Form\Element\Checkbox(
+        'sidebarIndexModules',
+        [
+            'catalog' => _t('文章目录'),
+            'search' => _t('搜索框'),
+            'memos' => _t('微言'),
+            'ad' => _t('广告位'),
+            'category' => _t('分类目录'),
+            'recent' => _t('最新文章'),
+            'hot' => _t('热门文章'),
+            'comments' => _t('最新评论'),
+            'tag' => _t('标签云'),
+            'siteinfo' => _t('站点信息'),
+        ],
+        ['catalog', 'search', 'memos', 'ad', 'category', 'recent', 'hot', 'comments', 'tag', 'siteinfo'],
+        _t('首页侧边栏模块（预留）'),
+        _t('预留配置：首页暂未启用侧边栏，此处勾选暂不生效，将在后续版本接入首页双栏布局后生效')
+    );
+    $form->addInput($sidebarIndexModules);
+
+    $sidebarCategoryModules = new \Typecho\Widget\Helper\Form\Element\Checkbox(
+        'sidebarCategoryModules',
+        [
+            'catalog' => _t('文章目录'),
+            'search' => _t('搜索框'),
+            'memos' => _t('微言'),
+            'ad' => _t('广告位'),
+            'category' => _t('分类目录'),
+            'recent' => _t('最新文章'),
+            'hot' => _t('热门文章'),
+            'comments' => _t('最新评论'),
+            'tag' => _t('标签云'),
+            'siteinfo' => _t('站点信息'),
+        ],
+        ['catalog', 'search', 'memos', 'ad', 'category', 'recent', 'hot', 'comments', 'tag', 'siteinfo'],
+        _t('分类页侧边栏模块（预留）'),
+        _t('预留配置：分类页暂未启用侧边栏，此处勾选暂不生效，将在后续版本接入分类页双栏布局后生效')
+    );
+    $form->addInput($sidebarCategoryModules);
 
     $sidebarMemos = new \Typecho\Widget\Helper\Form\Element\Textarea(
         'sidebarMemos',
         null,
         null,
         _t('侧边栏微言'),
-        _t('一行一条，展示在文章页侧边栏「微言」模块；格式：日期|内容（如：09-05|把复杂的事情做简单），也可只填内容。留空则隐藏该模块')
+        _t('一行一条，展示在侧边栏「微言」模块；格式：日期|内容（如：09-05|把复杂的事情做简单），也可只填内容。留空则隐藏该模块')
     );
     $form->addInput($sidebarMemos);
 
@@ -196,18 +256,9 @@ function themeConfig(\Typecho\Widget\Helper\Form $form): void
         null,
         null,
         _t('侧边栏广告位'),
-        _t('自定义 HTML 或文本，展示在文章页侧边栏「推荐」广告位（建议尺寸 360×250）。留空则隐藏该模块')
+        _t('自定义 HTML 或文本，展示在侧边栏「推荐」广告位（建议尺寸 360×250）。留空则隐藏该模块')
     );
     $form->addInput($sidebarAdCode);
-
-    $postAdSlot = new \Typecho\Widget\Helper\Form\Element\Textarea(
-        'postAdSlot',
-        null,
-        null,
-        _t('文章底部广告位'),
-        _t('自定义 HTML 或文本，展示在文章正文底部（工具栏与上一篇/下一篇导航之间）。留空则隐藏该模块')
-    );
-    $form->addInput($postAdSlot);
 
     $showCopyright = new \Typecho\Widget\Helper\Form\Element\Radio(
         'showCopyright',
@@ -244,6 +295,15 @@ function themeConfig(\Typecho\Widget\Helper\Form $form): void
         _t('请填写二维码图片地址，一行一个，最多填写两个。展示在文章页作者介绍处')
     );
     $form->addInput($rewardUrl);
+
+    $postAdSlot = new \Typecho\Widget\Helper\Form\Element\Textarea(
+        'postAdSlot',
+        null,
+        null,
+        _t('文章底部广告位'),
+        _t('自定义 HTML 或文本，展示在文章正文底部（工具栏与上一篇/下一篇导航之间）。留空则隐藏该模块')
+    );
+    $form->addInput($postAdSlot);
 
     $socialLink = new \Typecho\Widget\Helper\Form\Element\Textarea(
         'socialLink',
@@ -416,6 +476,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             }
         } catch (\Throwable $e) {
             lt_log_error('like article existence check failed cid=' . $ltCid, $e);
+            // 存在性校验自身出错时不应继续写入字段，明确返回 500 而非静默放行
+            header('HTTP/1.1 500 Internal Server Error');
+            echo json_encode(['success' => false, 'error' => 'server error']);
+            exit;
         }
 
         $ltLikes = lt_increment_likes($ltCid);
@@ -427,3 +491,102 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         exit;
     }
 }
+
+// ===== 后台「设置外观」配置分组（TAB 选项卡）=====
+// 原理：Typecho 表单元素渲染为平铺 ul.typecho-option，保存端按 name 平铺取参（DOM 位置不影响保存）；
+// 通过 admin/footer.php 插件钩子在「设置外观」页注入脚本，将表单项按组重组为 TAB 选项卡（零内核改动、渐进增强）。
+\Typecho\Plugin::factory('admin/footer.php')->end = static function (): void {
+    $ltUri = (string) ($_SERVER['REQUEST_URI'] ?? '');
+    if (strpos($ltUri, 'options-theme.php') === false) {
+        return;
+    }
+
+    // 分组映射（组名 => 字段名，顺序与 themeConfig 定义一致）
+    $ltGroups = [
+        '站点基础信息' => ['logoUrl', 'posterLogo', 'shortcutIcon', 'recordNum', 'policeRecordNum', 'avatarProxy'],
+        '首页展示' => ['navMenu', 'cIdRecommend', 'indexThumbs', 'greyImg', 'turnPageType', 'themeMode'],
+        '文章阅读体验' => ['postLayout', 'postFoldEnable', 'postFoldThreshold', 'postFoldHeight', 'postFoldMinRatio'],
+        '侧边栏' => ['sidebarPostModules', 'sidebarPageModules', 'sidebarIndexModules', 'sidebarCategoryModules', 'sidebarMemos', 'sidebarAdCode'],
+        '文章页组件' => ['showCopyright', 'writerIntro', 'selfIntro', 'rewardUrl', 'postAdSlot', 'socialLink'],
+        '页脚与代码' => ['footerText', 'customCss', 'customJs', 'statisticsCode'],
+    ];
+    $ltJson = json_encode($ltGroups, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    echo '<style id="lt-cfg-group-css">'
+        . '.lt-tabs{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 -1px;padding:0 0 0 6px;}'
+        . '.lt-tab{-webkit-appearance:none;appearance:none;border:1px solid #d9d2c7;border-bottom:none;background:#faf7f0;color:#555;font-size:14px;font-weight:600;padding:9px 18px;cursor:pointer;border-radius:6px 6px 0 0;margin-right:4px;}'
+        . '.lt-tab:hover{background:#f3ede1;color:#333;}'
+        . '.lt-tab.lt-active{background:#fff;color:#a65b4a;border-bottom-color:#fff;position:relative;top:1px;}'
+        . '.lt-tab-panel{display:none;padding:6px 16px 14px;border:1px solid #d9d2c7;border-radius:0 6px 6px 6px;background:#fff;margin:0 0 16px;}'
+        . '.lt-tab-panel.lt-active{display:block;}'
+        . '.lt-tab-panel ul.typecho-option{margin-left:0;}'
+        . '</style>'
+        . '<script id="lt-cfg-group-js">'
+        . '(function () {'
+        . 'var groups = ' . $ltJson . ';'
+        . 'var form = document.querySelector("form[action*=\"themes-edit\"]");'
+        . 'if (!form) { return; }'
+        . 'var nameToGroup = {};'
+        . 'Object.keys(groups).forEach(function (g) { groups[g].forEach(function (n) { nameToGroup[n] = g; }); });'
+        . 'var order = Object.keys(groups);'
+        . 'var panels = {};'
+        . 'var tabbar = document.createElement("div");'
+        . 'tabbar.className = "lt-tabs";'
+        . 'tabbar.setAttribute("role", "tablist");'
+        . 'form.insertBefore(tabbar, form.firstChild);'
+        . 'var anchor = tabbar;'
+        . 'order.forEach(function (g, gi) {'
+        . 'var panel = document.createElement("div");'
+        . 'panel.className = "lt-tab-panel";'
+        . 'panel.id = "lt-cfg-panel-" + gi;'
+        . 'panel.style.display = "none";'
+        . 'panel.setAttribute("role", "tabpanel");'
+        . 'form.insertBefore(panel, anchor.nextSibling);'
+        . 'anchor = panel;'
+        . 'panels[g] = panel;'
+        . 'var tab = document.createElement("button");'
+        . 'tab.type = "button";'
+        . 'tab.className = "lt-tab";'
+        . 'tab.textContent = g;'
+        . 'tab.setAttribute("role", "tab");'
+        . 'tab.setAttribute("aria-selected", "false");'
+        . 'tab.setAttribute("aria-controls", "lt-cfg-panel-" + gi);'
+        . 'tabbar.appendChild(tab);'
+        . 'tab.addEventListener("click", function () {'
+        . 'order.forEach(function (o) {'
+        . 'var on = (o === g);'
+        . 'panels[o].style.display = on ? "" : "none";'
+        . 'panels[o].classList.toggle("lt-active", on);'
+        . '});'
+        . 'tabbar.querySelectorAll(".lt-tab").forEach(function (t) {'
+        . 't.classList.toggle("lt-active", t === tab);'
+        . 't.setAttribute("aria-selected", t === tab ? "true" : "false");'
+        . '});'
+        . '});'
+        . '});'
+        . 'tabbar.addEventListener("keydown", function (e) {'
+        . 'if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") { return; }'
+        . 'var tabsArr = Array.prototype.slice.call(tabbar.querySelectorAll(".lt-tab"));'
+        . 'var idx = tabsArr.indexOf(document.activeElement);'
+        . 'if (idx === -1) { return; }'
+        . 'e.preventDefault();'
+        . 'var next = e.key === "ArrowRight" ? (idx + 1) % tabsArr.length : (idx - 1 + tabsArr.length) % tabsArr.length;'
+        . 'tabsArr[next].click();'
+        . 'tabsArr[next].focus();'
+        . '});'
+        . 'var uls = form.querySelectorAll("ul.typecho-option");'
+        . 'uls.forEach(function (ul) {'
+        . 'var input = ul.querySelector("input[name], select[name], textarea[name]");'
+        . 'if (!input) { return; }'
+        . 'var name = input.getAttribute("name");'
+        . 'if (!name) { return; }'
+        . 'name = name.replace(/\[\]$/, "");'
+        . 'var g = nameToGroup[name];'
+        . 'if (!g) { return; }'
+        . 'panels[g].appendChild(ul);'
+        . '});'
+        . 'var firstTab = tabbar.querySelector(".lt-tab");'
+        . 'if (firstTab) { firstTab.click(); }'
+        . '})();'
+        . '</script>';
+};

@@ -47,7 +47,7 @@ $themeConfig = [
     'POST_FOLD_MIN_RATIO' => (string) lt_text($this->options->postFoldMinRatio ?? '20')
 ];
 $shortcutIcon = trim(lt_text($this->options->shortcutIcon ?? ''));
-$fieldDesc = lt_text($this->fields->desc ?? '');
+$fieldDesc = lt_text($this->fields->articleDesc ?? '');
 $currentPage = (int) $this->request->filter('int')->get('page', 1);
 $logoUrl = lt_text($this->options->logoUrl ?? '');
 $siteTitle = lt_text($this->options->title ?? '');
@@ -265,12 +265,13 @@ if (empty($navItems)) {
 
 $customCss = trim(lt_text($this->options->customCss ?? ''));
 
-$customCssEscaped = $customCss !== '' ? preg_replace('/<\/(script|style)>/i', '<\\/$1>', $customCss) : '';
+$customCssEscaped = lt_escape_inline_code($customCss);
 
 // JSON-LD 结构化数据：逻辑统一前置，HTML 输出区仅保留 echo，保证 view-source 干净
 $ltLdJson = '';
 $ltBreadcrumbJson = '';
-if ($isSingle) {
+// 密码保护文章跳过 Article 类型（date/author 元信息不应对外泄露），与同文件其他安全判断保持一致
+if ($isSingle && !$isHiddenSingle) {
     $publisher = ['@type' => 'Organization', 'name' => $siteTitle];
     if ($logoUrl !== '') {
         $publisher['logo'] = ['@type' => 'ImageObject', 'url' => $logoUrl];
@@ -389,17 +390,12 @@ if ($breadcrumb !== null) {
 <?php endif; ?>
     <link rel="stylesheet" type="text/css" media="all" href="<?php $this->options->themeUrl('assets/css/iconfont.min.css'); ?>?v=<?php echo $ltAssetVersion; ?>"/>
     <link rel="stylesheet" type="text/css" media="all" href="<?php $this->options->themeUrl('assets/css/lantern.min.css'); ?>?v=<?php echo $ltAssetVersion; ?>"/>
-    <script>
-        window.LANTERTOWN_CONFIG = {
-<?php
-            $ltCfgJsonFlags = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP;
-            foreach ($themeConfig as $ltCfgKey => $ltCfgVal) {
-                $ltCfgValJson = json_encode($ltCfgVal, $ltCfgJsonFlags);
-                echo '            ' . json_encode((string) $ltCfgKey, $ltCfgJsonFlags) . ': ' . (is_string($ltCfgValJson) ? $ltCfgValJson : 'null') . ",\n";
-            }
-?>
-        };
-    </script>
+    <script type="application/json" id="lt-config"><?php
+        // 配置以 application/json 形式输出（非可执行脚本），前端通过 DOM 读取后解析，
+        // 消除内联可执行脚本对 CSP 'unsafe-inline' 的依赖（Typecho 评论系统仍需 unsafe-inline）。
+        // JSON_HEX_TAG 确保 </script> 等序列被转义为 \u003C 形式，不突破 script 标签边界。
+        echo json_encode($themeConfig, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
+    ?></script>
 <?php if ($needPrism): ?>
     <link rel="stylesheet" href="<?php $this->options->themeUrl('assets/vendor/prism/prism.min.css'); ?>?v=<?php echo $ltAssetVersion; ?>"/>
     <script type="text/javascript" defer src="<?php $this->options->themeUrl('assets/vendor/prism/prism.min.js'); ?>?v=<?php echo $ltAssetVersion; ?>"></script>
@@ -415,7 +411,8 @@ if ($breadcrumb !== null) {
 <body id="blog_container" class="<?php echo $themeModeNum === 4 ? 'bg-auto' : 'bg' . $themeModeNum; ?>">
 <script>
     (function () {
-        var cfg = window.LANTERTOWN_CONFIG || {};
+        var cfgEl = document.getElementById('lt-config');
+        var cfg = cfgEl ? JSON.parse(cfgEl.textContent) : {};
         var body = document.getElementById('blog_container');
         if (body && parseInt(cfg.THEME_MODE, 10) === 4 && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
             body.className = 'bg3';

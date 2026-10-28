@@ -11,9 +11,14 @@ define('LT_MAX_URL_LENGTH', 2048);
 
 define('LT_CSP_POLICY', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https:; media-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'");
 
-define('LT_THEME_VERSION', '2.4.0');
+define('LT_THEME_VERSION', '2.5.0');
 
-define('LT_ASSET_VERSION', '1.4.16');
+define('LT_ASSET_VERSION', '1.5.0');
+
+// 字段缓存哨兵值：区分"键不存在（未查库）"与"键存在但值为 null"。
+// lt_field_cache 读操作在键缺失时返回此哨兵，调用方以 === 判等即可区分，
+// 避免 lt_get_field_str 等场景用额外的 $queried 数组记录查库状态。
+define('LT_FIELD_MISSING', new \stdClass());
 
 
 
@@ -134,6 +139,20 @@ function lt_safe_url(string $url): string
     return $stripped === null ? '' : $stripped;
 }
 
+/**
+ * 内联 <script>/<style> 内容转义：防止管理员自定义 CSS/JS 中的闭合标签突破父级元素。
+ * HTML5 解析器在 script/style 数据态下仅识别 </script>/</style>（大小写不敏感）为闭合边界，
+ * 故只需转义这两种闭合序列；<!-- 与 <script 在 script/style 上下文中不构成突破向量。
+ * 转义产物 <\/script> 在 JS 中为合法转义（等价于 </script> 字符串），在 CSS 中亦无害。
+ */
+function lt_escape_inline_code(string $content): string
+{
+    if ($content === '') {
+        return '';
+    }
+    return (string) preg_replace('/<\/(script|style)>/i', '<\\/$1>', $content);
+}
+
 
 
 
@@ -199,12 +218,49 @@ function lt_safe_comment_html(string $text): string
     // 清洗事件属性 on*（onclick / onerror / onload 等）与 style
     $text = (string) preg_replace('/\son[a-z]+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $text);
     $text = (string) preg_replace('/\sstyle\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $text);
+    // 属性白名单（纵深防御）：仅保留安全属性，移除 data-*/form*/xlink:*/action*/srcset 等
+    //   可加载外部资源的非 src 属性（如 srcset）一律剥离，避免绕过协议白名单；
+    //   data-* 可能被第三方脚本读取利用，form* 系列属表单覆盖属性，均不在白名单内。
+    $ltAllowedAttrs = ['href', 'src', 'alt', 'title', 'target', 'rel', 'width', 'height', 'class', 'loading'];
+    $text = (string) preg_replace_callback(
+        '/<(\w+)\b([^>]*)>/',
+        static function (array $m) use ($ltAllowedAttrs): string {
+            $attrs = (string) preg_replace_callback(
+                '/\s([a-zA-Z_:][-a-zA-Z0-9_:.]*)(\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s>]+))?/',
+                static function (array $am) use ($ltAllowedAttrs): string {
+                    return in_array(strtolower($am[1]), $ltAllowedAttrs, true) ? $am[0] : '';
+                },
+                $m[2]
+            );
+            // 清理属性移除后遗留的多余空白，保持标签整洁
+            $attrs = (string) preg_replace('/\s{2,}/', ' ', $attrs);
+            return '<' . $m[1] . rtrim($attrs) . '>';
+        },
+        $text
+    );
     // a[href] / img[src] 仅允许 http(s) / mailto / # 锚点 / 相对路径，其余危险协议替换为 "#"
+    // 同时覆盖带引号 (href="url") 和无引号 (href=url) 两种属性值形式
+    $ltSafeProto = static function (string $url): bool {
+        return preg_match('~^(?:https?://|mailto:|#|/|\.{1,2}/)[^"\']*$~i', $url) === 1;
+    };
+    // 带引号形式：href="..." 或 href='...'
     $text = (string) preg_replace_callback(
         '/(<(?:a|img)\b[^>]*?(?:href|src)\s*=\s*)(["\'])(.*?)\2/i',
-        static function (array $m): string {
+        static function (array $m) use ($ltSafeProto): string {
             $url = trim((string) ($m[3] ?? ''));
-            if ($url !== '' && !preg_match('~^(?:https?://|mailto:|#|/|\.{1,2}/)[^"\']*$~i', $url)) {
+            if ($url !== '' && !$ltSafeProto($url)) {
+                return $m[1] . '"#"';
+            }
+            return $m[0];
+        },
+        $text
+    );
+    // 无引号形式：href=valuevalue 不含引号且以 \s 或 > 结尾
+    $text = (string) preg_replace_callback(
+        '/(<(?:a|img)\b[^>]*?(?:href|src)\s*=\s*)([^\s"\'>]+)/i',
+        static function (array $m) use ($ltSafeProto): string {
+            $url = trim((string) ($m[2] ?? ''));
+            if ($url !== '' && !$ltSafeProto($url)) {
                 return $m[1] . '"#"';
             }
             return $m[0];
@@ -400,6 +456,7 @@ function lt_prev_next(object $widget, object $options, string $direction): strin
             $select
                 ->where('table.contents.status = ?', 'publish')
                 ->where('table.contents.type = ?', $widget->type)
+                ->where('table.contents.created <= ?', time())
                 ->where('table.contents.password IS NULL OR table.contents.password = ?', '')
                 ->order('table.contents.created', $isNext ? \Typecho\Db::SORT_ASC : \Typecho\Db::SORT_DESC)
                 ->order('table.contents.cid', $isNext ? \Typecho\Db::SORT_ASC : \Typecho\Db::SORT_DESC)
@@ -492,11 +549,14 @@ function lt_field_cache(int $cid, string $name, mixed $value = null, bool $delet
         unset($cache[$key]);
         return null;
     }
-    if ($value !== null) {
+    // 用 func_num_args 区分"读"（2 参）与"写"（3+ 参），允许将 null 作为合法值写入缓存；
+    // 此前以 $value !== null 判定写入，导致 null 值无法被缓存（每次都会重新查库）。
+    if (func_num_args() >= 3) {
         $cache[$key] = $value;
         return $value;
     }
-    return $cache[$key] ?? null;
+    // 键不存在时返回哨兵 LT_FIELD_MISSING，与"缓存值为 null"区分开
+    return array_key_exists($key, $cache) ? $cache[$key] : LT_FIELD_MISSING;
 }
 
 
@@ -533,9 +593,12 @@ function lt_field_upsert(
     $table = $prefix . 'fields';
     $adapter = $db->getAdapter();
     $adapterClass = get_class($adapter);
-    $hasQuote = method_exists($adapter, 'quote');
-    $nameQuoted = $hasQuote ? $adapter->quote($name) : "'" . addslashes($name) . "'";
-    $strQuoted = $hasQuote ? $adapter->quote($strValue) : "'" . addslashes($strValue) . "'";
+    // Typecho 1.3.0+ Db Adapter 接口定义 quoteValue()（非 quote()），
+    // method_exists 检查 quote 永远返回 false 会导致走 addslashes fallback；
+    // 此处改为 quoteValue 后调用真实 escape 方法，addslashes 仅作为极端兜底
+    $hasQuote = method_exists($adapter, 'quoteValue');
+    $nameQuoted = $hasQuote ? $adapter->quoteValue($name) : "'" . addslashes($name) . "'";
+    $strQuoted = $hasQuote ? $adapter->quoteValue($strValue) : "'" . addslashes($strValue) . "'";
     $intValueQuoted = (string) (int) $intValueRaw;
 
 
@@ -554,7 +617,7 @@ function lt_field_upsert(
             $sets[] = "\"int_value\" = " . (int) $updateInt;
         }
         if ($updateStr !== null) {
-            $updateStrQuoted = $hasQuote ? $adapter->quote($updateStr) : "'" . addslashes($updateStr) . "'";
+            $updateStrQuoted = $hasQuote ? $adapter->quoteValue($updateStr) : "'" . addslashes($updateStr) . "'";
             $sets[] = "\"str_value\" = {$updateStrQuoted}";
         }
         if (empty($sets)) {
@@ -578,7 +641,7 @@ function lt_field_upsert(
             $sets[] = "`int_value` = " . (int) $updateInt;
         }
         if ($updateStr !== null) {
-            $updateStrQuoted = $hasQuote ? $adapter->quote($updateStr) : "'" . addslashes($updateStr) . "'";
+            $updateStrQuoted = $hasQuote ? $adapter->quoteValue($updateStr) : "'" . addslashes($updateStr) . "'";
             $sets[] = "`str_value` = {$updateStrQuoted}";
         }
         if (empty($sets)) {
@@ -597,7 +660,7 @@ function lt_get_field_int(int $cid, string $name): int
     }
 
     $cached = lt_field_cache($cid, $name);
-    if ($cached !== null) {
+    if ($cached !== LT_FIELD_MISSING) {
         return $cached;
     }
     try {
@@ -664,24 +727,13 @@ function lt_atomic_increment_field(int $cid, string $name, int $step = 1): int
 
 function lt_get_field_str(int $cid, string $name): ?string
 {
-
-
-    static $queried = [];
-    $cacheKey = $cid . '|' . $name;
-
     if ($cid <= 0 || $name === '') {
         return null;
     }
 
-
-    if (isset($queried[$cacheKey])) {
-        $cached = lt_field_cache($cid, $name);
-        return is_string($cached) ? $cached : null;
-    }
-
+    // 哨兵 LT_FIELD_MISSING 表示尚未查库；非哨兵（含 null）表示已查过，直接返回缓存值
     $cached = lt_field_cache($cid, $name);
-    if ($cached !== null) {
-        $queried[$cacheKey] = true;
+    if ($cached !== LT_FIELD_MISSING) {
         return is_string($cached) ? $cached : null;
     }
     try {
@@ -694,7 +746,6 @@ function lt_get_field_str(int $cid, string $name): ?string
         );
         $value = $row ? ($row['str_value'] ?? null) : null;
         lt_field_cache($cid, $name, $value);
-        $queried[$cacheKey] = true;
         return $value;
     } catch (\Throwable $e) {
         lt_log_error('lt_get_field_str query failed cid=' . $cid . ' name=' . $name, $e);
@@ -762,7 +813,7 @@ function lt_content_cache_dir(): string
     if ($dir !== null) {
         return $dir;
     }
-    $dir = __DIR__ . '/cache/content';
+    $dir = dirname(__DIR__) . '/cache/content';
     if (!is_dir($dir)) {
         if (!@mkdir($dir, 0755, true) || !is_dir($dir)) {
             lt_log_error('lt_content_cache_dir: cannot create cache directory: ' . $dir);
@@ -859,9 +910,14 @@ function lt_increment_views(int $cid): void
 
     lt_atomic_increment_field($cid, 'ltViews');
     if (!headers_sent()) {
-
-
-        setcookie($cookieName, '1', time() + 86400, '/', '', lt_is_https(), true);
+        // PHP 7.3+ 支持 options 数组形式；显式声明 SameSite=Lax 与 CSP form-action 'self' 保持一致
+        setcookie($cookieName, '1', [
+            'expires' => time() + 86400,
+            'path' => '/',
+            'secure' => lt_is_https(),
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
     }
 }
 
@@ -915,11 +971,20 @@ function lt_rate_limit_gc(string $cacheDir): void
 {
     try {
         foreach ((array) glob($cacheDir . '/rate_limit_*.php') as $file) {
-            // 一年一次的窗口（like_once_*）不得被常规 2 天 GC 清理，否则清除 Cookie 后同 IP 可再次点赞
-            if (str_starts_with(basename($file), 'rate_limit_like_once_')) {
+            if (!is_file($file)) {
                 continue;
             }
-            if (is_file($file) && time() - (int) @filemtime($file) > 86400 * 2) {
+            // 文件名是 md5 无法识别业务，窗口期随记录写入文件（'w' 键）：
+            // 一年期窗口（如点赞 like_once）按自身窗口保留，不得被常规 2 天 GC 清理，否则清除 Cookie 后同 IP 可再次点赞
+            $window = 0;
+            $data = @file_get_contents($file);
+            if ($data !== false && strpos($data, '<?php exit; ?>') === 0) {
+                $decoded = json_decode(substr($data, strlen('<?php exit; ?>')), true);
+                if (is_array($decoded) && isset($decoded['w'])) {
+                    $window = (int) $decoded['w'];
+                }
+            }
+            if (time() - (int) @filemtime($file) > max(86400 * 2, $window)) {
                 @unlink($file);
             }
         }
@@ -938,7 +1003,7 @@ function lt_check_rate_limit(string $key, int $maxRequests, int $windowSeconds):
     if (str_contains($key, 'unknown')) {
         $key .= '|ua:' . md5((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''));
     }
-    $cacheDir = __DIR__ . '/cache';
+    $cacheDir = dirname(__DIR__) . '/cache';
     $cacheFile = $cacheDir . '/rate_limit_' . md5($key) . '.php';
     $now = time();
     $records = [];
@@ -953,7 +1018,7 @@ function lt_check_rate_limit(string $key, int $maxRequests, int $windowSeconds):
         if (!is_dir($cacheDir)) {
             @mkdir($cacheDir, 0755, true);
         }
-        // inc/cache 为运行时目录，部署包不含 .htaccess；创建目录时补写防护文件（Apache 2.2/2.4 双版本兼容，与内容缓存目录一致）
+        // cache/ 为运行时目录，部署包含根 cache/.htaccess；运行时若目录缺失或 htaccess 缺失则补写（Apache 2.2/2.4 双版本兼容）
         if (is_dir($cacheDir) && !is_file($cacheDir . '/.htaccess')) {
             @file_put_contents(
                 $cacheDir . '/.htaccess',
@@ -971,7 +1036,8 @@ function lt_check_rate_limit(string $key, int $maxRequests, int $windowSeconds):
                     // 限流文件均为本主题 json 写入；旧 unserialize 兼容已移除（防对象注入面）
                     $decoded = json_decode($encoded, true);
                     if (is_array($decoded)) {
-                        $records = $decoded;
+                        // 新格式 {'w':窗口秒数,'r':[时间戳...]}；旧格式为纯时间戳数组
+                        $records = (isset($decoded['r']) && is_array($decoded['r'])) ? $decoded['r'] : $decoded;
                     }
                 }
             }
@@ -981,15 +1047,28 @@ function lt_check_rate_limit(string $key, int $maxRequests, int $windowSeconds):
             }
             $records[] = $now;
             if (is_dir($cacheDir) && is_writable($cacheDir)) {
-                @file_put_contents($cacheFile, '<?php exit; ?>' . json_encode($records));
+                // 降级路径（fopen c+ 失败）无文件句柄可 flock：写回改用临时文件 + rename 原子写防半文件；
+                // 竞态方向宽松（极端情况下少计数一次），且 fopen 失败多因 IO/权限异常、写回成功概率低，非安全面
+                $ltTmp = $cacheFile . '.tmp.' . bin2hex(random_bytes(4));
+                if (@file_put_contents($ltTmp, '<?php exit; ?>' . json_encode(['w' => $windowSeconds, 'r' => $records]), LOCK_EX) !== false) {
+                    @rename($ltTmp, $cacheFile);
+                }
             }
             return true;
         }
 
 
-        if (!@flock($fp, LOCK_EX | LOCK_NB)) {
+        // 非阻塞锁拿不到时重试（避免并发击穿限流窗口），最多 3 次 × 50ms；
+        // 若仍拿不到则降级放行（极端竞争场景宽松降级，避免无限阻塞）
+        $lockRetries = 0;
+        $maxLockRetries = 3;
+        while ($lockRetries < $maxLockRetries && !@flock($fp, LOCK_EX | LOCK_NB)) {
+            $lockRetries++;
+            usleep(50000); // 50ms
+        }
+        if ($lockRetries >= $maxLockRetries && !@flock($fp, LOCK_EX | LOCK_NB)) {
             @fclose($fp);
-            return true;
+            return true; // 极端竞争下的宽松降级放行
         }
 
 
@@ -1000,7 +1079,8 @@ function lt_check_rate_limit(string $key, int $maxRequests, int $windowSeconds):
             // 限流文件均为本主题 json 写入；旧 unserialize 兼容已移除（防对象注入面）
             $decoded = json_decode($encoded, true);
             if (is_array($decoded)) {
-                $records = $decoded;
+                // 新格式 {'w':窗口秒数,'r':[时间戳...]}；旧格式为纯时间戳数组
+                $records = (isset($decoded['r']) && is_array($decoded['r'])) ? $decoded['r'] : $decoded;
             }
         }
 
@@ -1015,7 +1095,7 @@ function lt_check_rate_limit(string $key, int $maxRequests, int $windowSeconds):
 
             ftruncate($fp, 0);
             rewind($fp);
-            @fwrite($fp, '<?php exit; ?>' . json_encode($records));
+            @fwrite($fp, '<?php exit; ?>' . json_encode(['w' => $windowSeconds, 'r' => $records]));
         }
 
         @flock($fp, LOCK_UN);
@@ -1057,9 +1137,13 @@ function lt_increment_likes(int $cid): int
 
     $newValue = lt_atomic_increment_field($cid, 'ltLikes');
     if (!headers_sent()) {
-
-
-        setcookie($cookieName, '1', time() + 31536000, '/', '', lt_is_https(), true);
+        setcookie($cookieName, '1', [
+            'expires' => time() + 31536000,
+            'path' => '/',
+            'secure' => lt_is_https(),
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
     }
     return $newValue;
 }

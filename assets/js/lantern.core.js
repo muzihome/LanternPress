@@ -1,3 +1,20 @@
+// 从 <script type="application/json" id="lt-config"> 读取主题配置，
+// 替代旧版内联 window.LANTERTOWN_CONFIG 赋值，消除可执行内联脚本对 CSP 的依赖。
+(function () {
+    if (window.LANTERTOWN_CONFIG) {
+        return;
+    }
+    var el = document.getElementById('lt-config');
+    if (el) {
+        try {
+            window.LANTERTOWN_CONFIG = JSON.parse(el.textContent);
+        } catch (e) {
+            window.LANTERTOWN_CONFIG = {};
+        }
+    } else {
+        window.LANTERTOWN_CONFIG = {};
+    }
+})();
 (() => {
 'use strict';
 function copyText(text) {
@@ -406,7 +423,8 @@ this.setAttribute('href', newURL);
 this.closest('.loadmore')?.remove();
 }
 self.initLazyLoad();
-} catch (err) {
+	if (window.ltAvifRescan) window.ltAvifRescan();
+	} catch (err) {
 this.removeAttribute('disabled');
 this.removeAttribute('aria-disabled');
 if (err && err.name === 'AbortError') {
@@ -609,6 +627,8 @@ function initAvifFallback() {
     }
     t(function (u) {
         if (!u) {
+            // 暴露复扫入口：瀑布流 AJAX 追加的 avif 图同样需要降级
+            window.ltAvifRescan = r;
             if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', r);
             else r();
         }

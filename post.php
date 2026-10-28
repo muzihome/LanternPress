@@ -50,7 +50,6 @@ $showWriterIntro = lt_bool($this->options->writerIntro ?? false);
 $showCopyright = lt_bool($this->options->showCopyright ?? false);
 $selfIntro = trim(lt_text($this->options->selfIntro ?? ''));
 $authorName = lt_text($this->author->name ?? $this->author->screenName ?? '');
-$authorMail = lt_text($this->author->mail ?? '');
 $cid = (int) ($this->cid ?? 0);
 
 $postLayout = lt_text($this->options->postLayout ?? 'right');
@@ -121,7 +120,7 @@ if ($ltCachedRaw !== null && $ltCachedRaw !== '' && strpos($ltCachedRaw, '||') !
             }
             $readingMinutes = max(1, (int) ceil($wordCount / 400));
             $_postPlainText = $ltCachedText;
-            lt_content_cache_set($ltCid, $ltConfigHash . '||' . $wordCount . '||' . \Typecho\Common::subStr($ltCachedText, 0, 100, '...') . '||' . $ltCachedContent);
+            lt_content_cache_set($ltCid, $ltConfigHash . '||' . $wordCount . '||' . str_replace('||', '｜', \Typecho\Common::subStr($ltCachedText, 0, 100, '...')) . '||' . $ltCachedContent);
         }
     }
 }
@@ -158,18 +157,108 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
                 </a>
 <?php
                 // 面包屑分类：无分类（独立页面/未分类文章）时不输出中间段，避免「首页 -> -> 标题」
+                // 多分类时按分类层级展示：首页 -> 一级分类 -> 二级分类 -> 三级分类 -> 正文（取层级最深分类作主路径）
                 $breadCatHtml = '';
                 if (is_array($this->categories ?? null) && !empty($this->categories)) {
-                    $breadCatLinks = [];
-                    foreach (array_slice($this->categories, 0, 2) as $breadCatRow) {
-                        $breadCatUrl = lt_safe_url((string) ($breadCatRow['permalink'] ?? ''));
-                        $breadCatName = trim(lt_text($breadCatRow['name'] ?? ''));
-                        if ($breadCatUrl !== '' && $breadCatName !== '') {
-                            $breadCatLinks[] = '<a href="' . lt_esc_attr($breadCatUrl) . '">' . lt_esc_html($breadCatName) . '</a>';
-                        }
+                    $ltCatMap = [];
+                    foreach ($this->categories as $ltCatRow) {
+                        $ltMid = (int) ($ltCatRow['mid'] ?? 0);
+                        if ($ltMid <= 0) { continue; }
+                        $ltCatMap[$ltMid] = [
+                            'mid'       => $ltMid,
+                            'name'      => trim(lt_text($ltCatRow['name'] ?? '')),
+                            'slug'      => trim((string) ($ltCatRow['slug'] ?? '')),
+                            'permalink' => trim((string) ($ltCatRow['permalink'] ?? '')),
+                            'parent'    => (int) ($ltCatRow['parent'] ?? 0),
+                        ];
                     }
-                    if (!empty($breadCatLinks)) {
-                        $breadCatHtml = implode(' , ', $breadCatLinks);
+                    if (!empty($ltCatMap)) {
+                        // 沿 parent 链补查父分类（多轮批量查询，防脏数据死循环上限 4 轮）
+                        try {
+                            $ltDb = \Typecho\Db::get();
+                            $ltNeed = [];
+                            foreach ($ltCatMap as $ltRow) {
+                                if ($ltRow['parent'] > 0) { $ltNeed[$ltRow['parent']] = true; }
+                            }
+                            $ltGuard = 0;
+                            while (!empty($ltNeed) && $ltGuard++ < 4) {
+                                $ltIds = array_keys($ltNeed);
+                                $ltNeed = [];
+                                $ltRows = $ltDb->fetchAll($ltDb->select('mid', 'name', 'slug', 'parent')
+                                    ->from('table.metas')
+                                    ->where('type = ?', 'category')
+                                    ->where('mid IN ?', $ltIds));
+                                foreach ($ltRows as $ltR) {
+                                    $ltRmid = (int) $ltR['mid'];
+                                    $ltCatMap[$ltRmid] = [
+                                        'mid'       => $ltRmid,
+                                        'name'      => trim(lt_text($ltR['name'] ?? '')),
+                                        'slug'      => trim((string) ($ltR['slug'] ?? '')),
+                                        'permalink' => '',
+                                        'parent'    => (int) $ltR['parent'],
+                                    ];
+                                    if ((int) $ltR['parent'] > 0 && !isset($ltCatMap[(int) $ltR['parent']])) {
+                                        $ltNeed[(int) $ltR['parent']] = true;
+                                    }
+                                }
+                            }
+                        } catch (\Throwable $e) {
+                            // 查询失败回退为仅用文章已带分类（不阻断页面渲染）
+                        }
+                        // 选择层级最深的主路径分类（同深度取文章顺序首个）
+                        $ltBest = null;
+                        $ltBestDepth = -1;
+                        foreach ($ltCatMap as $ltRow) {
+                            $ltDepth = 0;
+                            $ltP = $ltRow['parent'];
+                            $ltVisited = [];
+                            while ($ltP > 0 && !isset($ltVisited[$ltP]) && $ltDepth < 10) {
+                                $ltVisited[$ltP] = true;
+                                if (isset($ltCatMap[$ltP])) {
+                                    $ltDepth++;
+                                    $ltP = $ltCatMap[$ltP]['parent'];
+                                } else {
+                                    break;
+                                }
+                            }
+                            if ($ltDepth > $ltBestDepth) {
+                                $ltBestDepth = $ltDepth;
+                                $ltBest = $ltRow['mid'];
+                            }
+                        }
+                        // 沿主路径 parent 链构建层级（根 -> 叶子），生成面包屑
+                        $ltChain = [];
+                        if ($ltBest !== null) {
+                            $ltCur = $ltBest;
+                            $ltVisited = [];
+                            $ltGuard2 = 0;
+                            while ($ltCur > 0 && !isset($ltVisited[$ltCur]) && $ltGuard2++ < 10) {
+                                $ltVisited[$ltCur] = true;
+                                if (!isset($ltCatMap[$ltCur])) { break; }
+                                $ltChain[] = $ltCatMap[$ltCur];
+                                $ltCur = $ltCatMap[$ltCur]['parent'];
+                            }
+                            $ltChain = array_reverse($ltChain);
+                            $ltBreadLinks = [];
+                            foreach ($ltChain as $ltRow) {
+                                if ($ltRow['name'] === '') { continue; }
+                                $ltUrl = $ltRow['permalink'];
+                                if ($ltUrl === '' && $ltRow['slug'] !== '') {
+                                    try {
+                                        $ltUrl = (string) \Typecho\Router::url('category', ['slug' => $ltRow['slug']], $this->options->index);
+                                    } catch (\Throwable $e) {
+                                        $ltUrl = '';
+                                    }
+                                }
+                                $ltUrl = lt_safe_url($ltUrl);
+                                $ltBreadLinks[] = ($ltUrl !== '')
+                                    ? '<a href="' . lt_esc_attr($ltUrl) . '">' . lt_esc_html($ltRow['name']) . '</a>'
+                                    : '<span>' . lt_esc_html($ltRow['name']) . '</span>';
+                            }
+                            if (!empty($ltBreadLinks)) {
+                                $breadCatHtml = implode('<span class="breadcrumb-sep">-&gt;</span>', $ltBreadLinks);
+                            }
+                        }
                     }
                 }
                 ?>
@@ -312,7 +401,7 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
 
                     if ($ltCid > 0) {
                         // 写缓存：chars 与摘要由上方前置计算块产出（post-meta 输出前已算好），此处不再重复计算
-                        lt_content_cache_set($ltCid, $ltConfigHash . '||' . $wordCount . '||' . \Typecho\Common::subStr($_postPlainText, 0, 100, '...') . '||' . $content);
+                        lt_content_cache_set($ltCid, $ltConfigHash . '||' . $wordCount . '||' . str_replace('||', '｜', \Typecho\Common::subStr($_postPlainText, 0, 100, '...')) . '||' . $content);
                     }
                     echo $content;
                     }
@@ -473,6 +562,7 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
                                         ->where('table.relationships.mid = ?', $ltRelMid)
                                         ->where('table.contents.type = ?', 'post')
                                         ->where('table.contents.status = ?', 'publish')
+                                        ->where('table.contents.created <= ?', time())
                                         ->where('table.contents.password IS NULL OR table.contents.password = ?', '')
                                         ->where('table.contents.cid <> ?', $cid)
                                         ->limit(3)
@@ -514,7 +604,7 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
                                 $ltRecommendRows = $ltDb->fetchAll(
                                     $ltDb->select('cid', 'type', 'title', 'slug', 'created')
                                         ->from('table.contents')
-                                        ->where('cid IN ? AND type = ? AND status = ? AND (password IS NULL OR password = ?)', $ltRecommendCids, 'post', 'publish', '')
+                                        ->where('cid IN ? AND type = ? AND status = ? AND created <= ? AND (password IS NULL OR password = ?)', $ltRecommendCids, 'post', 'publish', time(), '')
                                 );
                                 $ltOrderMap = array_flip($ltRecommendCids);
                                 usort($ltRecommendRows, static fn(array $a, array $b): int => ($ltOrderMap[(int) ($a['cid'] ?? 0)] ?? 999) <=> ($ltOrderMap[(int) ($b['cid'] ?? 0)] ?? 999));

@@ -1,3 +1,20 @@
+// 配置读取回退：lantern.core.js 已从 #lt-config 注入 window.LANTERTOWN_CONFIG，
+// 此处兜底以防 core.js 加载顺序异常时 post.js 拿不到配置。
+(function () {
+    if (window.LANTERTOWN_CONFIG) {
+        return;
+    }
+    var el = document.getElementById('lt-config');
+    if (el) {
+        try {
+            window.LANTERTOWN_CONFIG = JSON.parse(el.textContent);
+        } catch (e) {
+            window.LANTERTOWN_CONFIG = {};
+        }
+    } else {
+        window.LANTERTOWN_CONFIG = {};
+    }
+})();
 (() => {
 'use strict';
 const Lantern = window.Lantern;
@@ -306,10 +323,18 @@ if (!href || href.charAt(0) !== '#') {
 return;
 }
 const target = document.querySelector(href);
-if (!target) {
-return;
-}
-e.preventDefault();
+	if (!target) {
+	return;
+	}
+	// 折叠线以下锚点由 initPostFold 先展开再滚动（避免同一事件双重 smooth scroll）；折叠线以上照常处理
+		const foldWrap = document.querySelector('.post-fold-wrap.post-fold');
+		if (foldWrap && foldWrap.contains(target)) {
+		const fh = parseInt(getComputedStyle(foldWrap).getPropertyValue('--lt-fold-height'), 10);
+		if (fh && target.offsetTop > fh) {
+		return;
+		}
+		}
+		e.preventDefault();
 target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 if (window.history && window.history.replaceState) {
 window.history.replaceState(null, '', href);
@@ -379,7 +404,7 @@ img.alt = '';
 popupBody.appendChild(img);
 });
 lastFocused = document.activeElement;
-this.openPosterLayer(bg, closeBtn);
+this.openPosterLayer(bg, closeBtn, 'social');
 };
 const close = () => {
 this.closePosterLayer(bg, lastFocused);
@@ -391,9 +416,9 @@ close();
 }
 });
 document.addEventListener('keydown', (e) => {
-if (e.key === 'Escape' && isVisible()) {
-close();
-}
+	if (e.key === 'Escape' && isVisible() && bg.getAttribute('data-popup-owner') === 'social') {
+		close();
+	}
 });
 if (closeBtn) {
 closeBtn.addEventListener('click', close);
@@ -724,8 +749,12 @@ countEl.textContent = data.likes;
 btn.classList.add('liked');
 btn.disabled = true;
 } else {
-throw new Error(data && data.error ? data.error : 'like failed');
-}
+	// 业务失败（已赞过/限流/令牌失效等）：提示服务端原因并恢复可点，不当作"失败"异常展示
+	btn.disabled = false;
+	if (window.LT_UTIL && window.LT_UTIL.showToast) {
+	window.LT_UTIL.showToast((data && data.error) || '操作未成功', 'error');
+	}
+	}
 } catch (err) {
 if (countEl) {
 countEl.textContent = '失败';
@@ -898,11 +927,17 @@ proto.initPostFold = function () {
 		wrap.style.setProperty('--lt-fold-height', foldHeight + 'px');
 	};
 	if (window.matchMedia) {
-		const mq = window.matchMedia('(max-width: 767px)');
-		const handler = () => recalcFoldHeight();
-		if (mq.addEventListener) mq.addEventListener('change', handler);
-		else if (mq.addListener) mq.addListener(handler);
-	}
+			const mq = window.matchMedia('(max-width: 767px)');
+			const handler = () => recalcFoldHeight();
+			if (mq.addEventListener) mq.addEventListener('change', handler);
+			else if (mq.addListener) mq.addListener(handler);
+		}
+		// 同断点内旋转屏幕/窗口尺寸变化也重算（matchMedia change 只在跨越断点时触发）
+		let foldResizeTimer = null;
+		window.addEventListener('resize', () => {
+			if (foldResizeTimer) clearTimeout(foldResizeTimer);
+			foldResizeTimer = setTimeout(recalcFoldHeight, 150);
+		});
 	content.setAttribute('data-fold-bound', '1');
 	maybeFold();
 	// 图片/字体加载后 scrollHeight 可能变大：未展开且未折叠时二次检测
@@ -914,9 +949,9 @@ proto.initPoster = function () {
 		const bg = document.getElementById('background-layer');
 		const popupBody = document.getElementById('popup-body');
 		if (!btn || !bg || !popupBody) return;
-		// Esc 关闭弹窗
+		// Esc 关闭弹窗（仅当当前弹层归属海报时；打赏弹层由 initSocialPopup 处理）
 		document.addEventListener('keydown', (e) => {
-			if (e.key === 'Escape' && bg.style.display === 'flex') this.closePosterLayer(bg);
+			if (e.key === 'Escape' && bg.style.display === 'flex' && bg.getAttribute('data-popup-owner') === 'poster') this.closePosterLayer(bg);
 		});
 		btn.addEventListener('click', async (e) => {
 			e.preventDefault();
@@ -998,7 +1033,7 @@ proto.initPoster = function () {
 			wrap.appendChild(img);
 			wrap.appendChild(actions);
 			popupBody.appendChild(wrap);
-			this.openPosterLayer(bg, dl);
+			this.openPosterLayer(bg, dl, 'poster');
 			} catch (err) {
 				if (token === this._posterSession) this.renderPosterError(bg, popupBody);
 			} finally {
@@ -1027,12 +1062,19 @@ proto.renderPosterError = function (bg, popupBody) {
 		wrap.appendChild(msg);
 		wrap.appendChild(close);
 		popupBody.appendChild(wrap);
-		this.openPosterLayer(bg, close);
+		this.openPosterLayer(bg, close, 'poster');
 };
 
-proto.openPosterLayer = function (bg, focusEl) {
-		if (!bg) return;
-		document.body.classList.add('poster-lock-scroll');
+proto.openPosterLayer = function (bg, focusEl, owner) {
+	if (!bg) return;
+	// 重开前清除关闭动画的延时隐藏，避免残留 closeTimer 在 200ms 后把弹层重新 display:none
+	if (this._posterCloseTimer) {
+		clearTimeout(this._posterCloseTimer);
+		this._posterCloseTimer = null;
+	}
+	// 记录弹层归属（打赏/海报共用 #background-layer，Esc 等全局处理器按归属分流，避免双 close）
+	bg.setAttribute('data-popup-owner', owner || '');
+	document.body.classList.add('poster-lock-scroll');
 		bg.style.display = 'flex';
 		bg.style.opacity = '0';
 		cancelAnimationFrame(this._posterRAF);
@@ -1048,6 +1090,7 @@ proto.closePosterLayer = function (bg, focusEl) {
 		if (!bg) return;
 		document.body.classList.remove('poster-lock-scroll');
 		if (bg.style.display !== 'flex') return;
+		bg.removeAttribute('data-popup-owner');
 		// 会话令牌失效：生成中的异步完成后不再弹开弹窗（Esc/遮罩/× 关闭均触发）
 		this._posterSession = (this._posterSession || 0) + 1;
 		bg.style.opacity = '0';
@@ -1231,7 +1274,7 @@ proto.renderPoster = function (coverImg, logoImg) {
 			const lines = [];
 			let cur = '';
 			let overflow = false;
-			for (const ch of String(text).split('')) {
+			for (const ch of Array.from(String(text))) {
 				const test = cur + ch;
 				if (ctx.measureText(test).width > maxWidth && cur) {
 					// 超宽时优先回退到最后一个空格处断行（保留英文单词完整）

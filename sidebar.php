@@ -4,8 +4,9 @@ declare(strict_types=1);
 if (!defined('__TYPECHO_ROOT_DIR__')) exit;
 
 // ============================================================
-// 文章页侧边栏（post.php / page.php 经 post-layout-wrapper 引入）
+// 文章页 / 独立页面侧边栏（post.php / page.php 经 post-layout-wrapper 引入）
 // 10 个模块：文章目录 / 搜索 / 微言 / 广告 / 分类 / 最新 / 热门 / 最新评论 / 标签云 / 站点信息
+// 文章页与独立页面在后台「侧边栏」TAB 分别独立配置（sidebarPostModules / sidebarPageModules）
 // 对齐设计稿 sidebar.html 类名；目录模块复用主题 initCatalog()（#catalog-directory 挂载）
 // ============================================================
 
@@ -18,13 +19,28 @@ $siteUrl = rtrim(lt_text($this->options->siteUrl), '/');
 
 $sidebarSearchAction = $siteUrl . '/';
 
-// 文章页侧边栏模块配置（后台「文章页侧边栏模块」多选；未配置或非数组时默认显示全部模块）
-$sidebarPostModules = $this->options->sidebarPostModules ?? null;
+// 侧边栏模块配置（后台「侧边栏」TAB 按页面类型独立多选；未配置或非数组时默认显示全部模块）
+// 独立页面读 sidebarPageModules（从未保存过时回退 sidebarPostModules，保持升级前行为）；
+// 文章页读 sidebarPostModules；外部页面可在 need('sidebar.php') 前设置 $sidebarForceModules
+// 强制裁剪模块（如友链页仅显示最新文章 / 热门文章 / 侧边栏广告 / 标签云）
 $sidebarAllModules = ['catalog', 'search', 'memos', 'ad', 'category', 'recent', 'hot', 'comments', 'tag', 'siteinfo'];
-if (is_array($sidebarPostModules)) {
-    $sidebarActiveModules = array_values(array_intersect($sidebarAllModules, array_map('strval', $sidebarPostModules)));
+if (isset($sidebarForceModules) && is_array($sidebarForceModules)) {
+    $sidebarActiveModules = array_values(array_intersect($sidebarAllModules, $sidebarForceModules));
 } else {
-    $sidebarActiveModules = $sidebarAllModules;
+    $sidebarModulesOpt = null;
+    if ($this->is('page')) {
+        $sidebarModulesOpt = $this->options->sidebarPageModules ?? null;
+        if (!is_array($sidebarModulesOpt)) {
+            $sidebarModulesOpt = $this->options->sidebarPostModules ?? null;
+        }
+    } else {
+        $sidebarModulesOpt = $this->options->sidebarPostModules ?? null;
+    }
+    if (is_array($sidebarModulesOpt)) {
+        $sidebarActiveModules = array_values(array_intersect($sidebarAllModules, array_map('strval', $sidebarModulesOpt)));
+    } else {
+        $sidebarActiveModules = $sidebarAllModules;
+    }
 }
 try {
     $resolvedSearch = \Typecho\Router::url('search', [], $this->options->index);
@@ -135,7 +151,7 @@ $sidebarCategories = null;
 if (in_array('category', $sidebarActiveModules, true)) {
     $this->widget('Widget_Metas_Category_List@sidebarCategory', ['limit' => 12])->to($sidebarCategories);
 }
-if ($sidebarCategories instanceof \Widget\Contents\Category\Rows && $sidebarCategories->have()): ?>
+if ($sidebarCategories instanceof \Widget\Metas\Category\Rows && $sidebarCategories->have()): ?>
 <!-- 模块 5：分类目录 -->
 <div class="sidebar-widget widget-category">
     <h3 class="widget-title"><?php _e('分类目录'); ?></h3>
@@ -181,6 +197,8 @@ if (in_array('hot', $sidebarActiveModules, true)) {
                     ->from('table.contents')
                     ->join('table.fields', "table.contents.cid = table.fields.cid AND table.fields.name = 'ltViews'", \Typecho\Db::LEFT_JOIN)
                     ->where('table.contents.type = ? AND table.contents.status = ?', 'post', 'publish')
+                    ->where('table.contents.created <= ?', time())
+                    ->where('table.contents.password IS NULL OR table.contents.password = ?', '')
                     ->order('table.fields.int_value', \Typecho\Db::SORT_DESC)
                     ->order('table.contents.created', \Typecho\Db::SORT_DESC)
                     ->limit(5)

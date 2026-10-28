@@ -33,7 +33,7 @@ try {
             'slug' => $slug,
             'count' => max(0, (int) ($row['cnt'] ?? 0)),
             'url' => ($name !== '' && $slug !== '')
-                ? \Typecho\Router::url('archive', ['type' => 'tag', 'slug' => $slug], $this->options->index)
+                ? \Typecho\Router::url('tag', ['slug' => $slug], $this->options->index)
                 : ''
         ];
     }

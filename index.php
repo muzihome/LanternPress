@@ -6,7 +6,7 @@ declare(strict_types=1);
  *
  * @package LanternPress
  * @author 木子小鱼
- * @version 2.4.0
+ * @version 2.5.0
  * @link https://github.com/muzihome/LanternPress
  */
 
