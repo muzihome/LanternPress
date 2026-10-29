@@ -11,41 +11,15 @@ if (!defined('__TYPECHO_ROOT_DIR__')) exit;
 $this->need('header.php');
 
 
-// 归档缓存统一落在主题根目录 cache/（与 functions.php 发布清除路径同源）
-$cacheDir = __DIR__ . '/cache';
-$cacheFile = $cacheDir . '/archive-cache.php';
-$cachePrefix = '<?php exit; ?>';
-$cacheTtl = 3600;
-
-$groups = null;
-if (is_file($cacheFile)) {
-    $data = @file_get_contents($cacheFile);
-    if ($data !== false && strpos($data, $cachePrefix) === 0) {
-        $payload = substr($data, strlen($cachePrefix));
-
-
-        $sepPos = strpos($payload, '|');
-        if ($sepPos !== false && is_numeric(substr($payload, 0, $sepPos))) {
-            $timestamp = (int) substr($payload, 0, $sepPos);
-            $encoded = substr($payload, $sepPos + 1);
-            if (time() - $timestamp <= $cacheTtl) {
-                // 缓存文件均为本主题 json 写入；旧 unserialize 兼容已移除
-                $decoded = json_decode($encoded, true);
-                if (is_array($decoded)) {
-                    $groups = $decoded;
-                }
-            }
-        } else {
-            // 无时间戳头旧格式：按整段 json 尝试（serialize 旧文件自然失效重建）
-            $decoded = json_decode($payload, true);
-            if (is_array($decoded)) {
-                $groups = $decoded;
-            }
-        }
-    }
+// 归档缓存走统一缓存层 lt_cache_remember（cache/archive_*.php，TTL 3600s），
+// 发布/更新文章时由 finishArticle 钩子（inc/hooks.php）清除；
+// 一次性遗留清理：旧版固定命名缓存文件（统一缓存层前的 archive-cache.php）
+$ltLegacyArchiveCache = __DIR__ . '/cache/archive-cache.php';
+if (is_file($ltLegacyArchiveCache)) {
+    @unlink($ltLegacyArchiveCache);
 }
 
-if ($groups === null) {
+$groups = lt_cache_remember('archive', 'archive', 3600, function () {
     $archiveRows = [];
     try {
         $db = \Typecho\Db::get();
@@ -69,24 +43,8 @@ if ($groups === null) {
         $groups[$year][$month][] = $row;
     }
     krsort($groups);
-
-
-    try {
-        if (!is_dir($cacheDir)) {
-            @mkdir($cacheDir, 0755, true);
-        }
-        if (is_dir($cacheDir) && is_writable($cacheDir)) {
-            // 临时文件 + rename 原子写，避免并发写半文件（与内容缓存同款模式）
-            $cacheTmp = $cacheFile . '.tmp.' . bin2hex(random_bytes(4));
-            $cachePayload = $cachePrefix . time() . '|' . json_encode($groups, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            if (@file_put_contents($cacheTmp, $cachePayload) !== false) {
-                @rename($cacheTmp, $cacheFile);
-            }
-        }
-    } catch (\Throwable $e) {
-
-    }
-}
+    return $groups;
+});
 ?>
 <div class="post">
     <div class="post-container archive-page">

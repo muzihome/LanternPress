@@ -10,6 +10,9 @@ use Utils\Helper;
 
 $ltAssetVersion = LT_ASSET_VERSION;
 
+// 海报代理图床域名白名单下发（后台「文章页组件」→ posterProxyHosts → cache/poster_hosts.php）
+lt_sync_poster_hosts(lt_text(Helper::options()->posterProxyHosts ?? ''));
+
 
 $themeUrlFull = Helper::options()->themeUrl(null, Helper::options()->theme);
 $themeUrlParts = parse_url($themeUrlFull);
@@ -23,10 +26,6 @@ $themeModeNum = (int) lt_text($this->options->themeMode ?? 0);
 if ($themeModeNum < 0 || $themeModeNum > 4) {
     $themeModeNum = 0;
 }
-$postLayout = lt_text($this->options->postLayout ?? 'right');
-if (!in_array($postLayout, ['right', 'left', 'none'], true)) {
-    $postLayout = 'right';
-}
 $isIndexPage = $this->is('index');
 $isSearchPage = $this->is('search');
 $isSingle = $this->is('post') || $this->is('page');
@@ -39,7 +38,6 @@ $themeConfig = [
     'POSTER_LOGO' => lt_text($this->options->posterLogo ?? ''),
     'TURN_PAGE_TYPE' => lt_text($this->options->turnPageType ?? 'page'),
     'THEME_MODE' => $themeModeNum,
-    'POST_LAYOUT' => $postLayout,
     'ASSET_VERSION' => LT_ASSET_VERSION,
     'POST_FOLD_ENABLE' => (string) lt_text($this->options->postFoldEnable ?? '1'),
     'POST_FOLD_THRESHOLD' => (string) lt_text($this->options->postFoldThreshold ?? '2000'),
@@ -47,285 +45,43 @@ $themeConfig = [
     'POST_FOLD_MIN_RATIO' => (string) lt_text($this->options->postFoldMinRatio ?? '20')
 ];
 $shortcutIcon = trim(lt_text($this->options->shortcutIcon ?? ''));
-$fieldDesc = lt_text($this->fields->articleDesc ?? '');
-$currentPage = (int) $this->request->filter('int')->get('page', 1);
 $logoUrl = lt_text($this->options->logoUrl ?? '');
 $siteTitle = lt_text($this->options->title ?? '');
 $siteUrl = rtrim(lt_text($this->options->siteUrl), '/');
 
 
-// 页面标题：<title> 用 HTML 转义版，meta/JSON-LD 用原文版；两组共用同一拼接结构（消除重复逻辑）
-$pageTitleParts = [];
-$pageTitleMetaParts = [];
-if ($currentPage > 1) {
-    $pageTitleParts[] = '第 ' . $currentPage . ' 页';
-    $pageTitleMetaParts[] = '第 ' . $currentPage . ' 页';
-}
-ob_start();
-$this->archiveTitle(
-    [
-        'category' => '分类 %s 下的文章',
-        'search' => '包含关键词 %s 的文章',
-        'tag' => '标签 %s 下的文章',
-        'author' => '%s 发布的文章',
-    ],
-    '',
-    ''
-);
-$archiveTitleText = trim((string) ob_get_clean());
-if ($archiveTitleText !== '') {
-    $pageTitleParts[] = lt_esc_html($archiveTitleText);
-    $pageTitleMetaParts[] = $archiveTitleText;
-}
-if ($siteTitle !== '') {
-    $pageTitleParts[] = lt_esc_html($siteTitle);
-    $pageTitleMetaParts[] = $siteTitle;
-}
-$pageTitle = implode(' - ', array_filter($pageTitleParts));
-$pageTitleMeta = implode(' - ', array_filter($pageTitleMetaParts));
+// 页面元信息统一构建（inc/meta.php）：title/canonical/description/OG 图/feed·search 路由/面包屑/JSON-LD/Prism 判定
+[
+    'pageTitle' => $pageTitle,
+    'pageTitleMeta' => $pageTitleMeta,
+    'canonicalUrl' => $canonicalUrl,
+    'pageDesc' => $pageDesc,
+    'needPrism' => $needPrism,
+    'ogImage' => $ogImage,
+    'ogImageIsDefault' => $ogImageIsDefault,
+    'ogImageW' => $ogImageW,
+    'ogImageH' => $ogImageH,
+    'feedUrl' => $feedUrl,
+    'breadcrumb' => $breadcrumb,
+    'ltLdJson' => $ltLdJson,
+    'ltBreadcrumbJson' => $ltBreadcrumbJson,
+] = lt_meta_build($this, $themeUrlFull);
 
-
-
-$canonicalUrl = '';
-if ($isSingle) {
-    $canonicalUrl = lt_safe_url(lt_text($this->permalink ?? ''));
-} elseif (!$isIndexPage && !$isSearchPage) {
-    $canonicalUrl = $siteUrl . (string) $this->request->getPathInfo();
-}
-if ($canonicalUrl === '') {
-    $canonicalUrl = $siteUrl;
-}
-$pageDesc = $fieldDesc;
-if ($pageDesc === '' && $isSingle && !$isHiddenSingle) {
-    $pageDesc = trim(lt_text($this->content ?? ''));
-    $pageDesc = \Typecho\Common::subStr(strip_tags($pageDesc), 0, 200, '...');
-}
-
-if ($isHiddenSingle) {
-    // 密码保护文章：不向 meta description 输出正文摘要（正文区已由密码表单拦截，元信息同步置空）
-    $pageDesc = '';
-} elseif ($pageDesc === '' && !$isSingle && !$isIndexPage && !$isSearchPage && $archiveTitleText !== '') {
-    $archiveDescRaw = '';
-    if (method_exists($this, 'getArchiveDescription')) {
-        try {
-            $archiveDescRaw = trim((string) $this->getArchiveDescription());
-        } catch (\Throwable $e) {
-            $archiveDescRaw = '';
-        }
-    }
-    $pageDesc = $archiveDescRaw !== ''
-        ? \Typecho\Common::subStr($archiveDescRaw, 0, 200, '...')
-        : \Typecho\Common::subStr($archiveTitleText, 0, 200, '...');
-}
-
-if ($pageDesc === '' && $isIndexPage) {
-    $pageDesc = \Typecho\Common::subStr(trim(lt_text($this->options->description ?? '')), 0, 200, '...');
-}
-
-
-$needPrism = false;
-if ($isSingle && !$isHiddenSingle) {
-    $rawBody = lt_text($this->content ?? '');
-    $needPrism = $rawBody !== '' && (
-        stripos($rawBody, '<pre') !== false
-        || stripos($rawBody, '<code') !== false
-        || strpos($rawBody, '```') !== false
-        || strpos($rawBody, '~~~') !== false
-    );
-}
-
-$ogImage = '';
-$ogImageIsDefault = false; // true = 站点默认图（blog_bg），供海报功能识别"文章无封面"
-if ($isSingle && !$isHiddenSingle) {
-    // 文章主图（banner 字段）→ 正文首图 → 默认图；不走 indexThumbs 轮换（轮换图仅供列表缩略图，语义与具体文章不符）
-    $ogImage = lt_text($this->fields->bannerUrl ?? '');
-    if ($ogImage === '') {
-        $ogImage = lt_content_image(lt_text($this->content ?? ''));
-    }
-    if ($ogImage === '') {
-        $ogImage = rtrim($themeUrlFull, '/') . '/assets/img/blog_bg.jpg';
-        $ogImageIsDefault = true;
-    } else {
-        $ogImage = lt_safe_url($ogImage);
-    }
-    if (str_contains($ogImage, '/assets/img/blog_bg.jpg')) {
-        $ogImageIsDefault = true;
-    }
-} elseif ($logoUrl !== '') {
-    $ogImage = $logoUrl;
-}
-
-if ($ogImage === '') {
-    $ogImage = rtrim($themeUrlFull, '/') . '/assets/img/blog_bg.jpg';
-    $ogImageIsDefault = true;
-}
-
-// og:image 绝对化：相对路径（/uploads/… 或 uploads/…）拼接站点域名，
-// 保证外站分享（微信/QQ/微博）与爬虫可解析完整图片 URL
-if ($ogImage !== '') {
-    if (str_starts_with($ogImage, '/')) {
-        $ogImage = rtrim($siteUrl, '/') . $ogImage;
-    } elseif (!preg_match('#^https?://#i', $ogImage)) {
-        $ogImage = rtrim($siteUrl, '/') . '/' . $ogImage;
-    }
-}
-
-// og:image 尺寸（防御式）：仅当图片映射到本地文件且可读时输出 width/height，
-// 远程图床（如 CDN）无法低成本探测则跳过，不影响分享解析
-$ogImageW = 0;
-$ogImageH = 0;
-if ($ogImage !== '') {
-    $sitePath = (string) parse_url($siteUrl, PHP_URL_PATH);
-    $imgRel = $ogImage;
-    if ($sitePath !== '' && str_starts_with($imgRel, $sitePath)) {
-        $imgRel = substr($imgRel, strlen($sitePath));
-    }
-    if (str_starts_with($imgRel, '/') && defined('__TYPECHO_ROOT_DIR__')) {
-        $imgLocal = rtrim((string) __TYPECHO_ROOT_DIR__, '/') . $imgRel;
-        if (is_file($imgLocal) && is_readable($imgLocal)) {
-            $imgDim = @getimagesize($imgLocal);
-            if (is_array($imgDim) && ($imgDim[0] ?? 0) > 0 && ($imgDim[1] ?? 0) > 0) {
-                $ogImageW = (int) $imgDim[0];
-                $ogImageH = (int) $imgDim[1];
-            }
-        }
-    }
-}
-
-$feedUrl = $siteUrl . '/feed/';
-try {
-    $resolvedFeed = \Typecho\Router::url('feed', ['feed' => ''], $this->options->index);
-    if (is_string($resolvedFeed) && $resolvedFeed !== '' && strpos($resolvedFeed, '{') === false) {
-        $feedUrl = $resolvedFeed;
-    }
-} catch (\Throwable $e) {  }
-
-
-$searchLdTarget = $siteUrl . '/search/{search_term_string}/';
-try {
-    $resolvedSearch = \Typecho\Router::url('search', ['keywords' => '{search_term_string}'], $this->options->index);
-    if (is_string($resolvedSearch) && $resolvedSearch !== '') {
-        $searchLdTarget = $resolvedSearch;
-    }
-} catch (\Throwable $e) {  }
-
-
-$breadcrumb = null;
-if ($isSingle && !$isHiddenSingle) {
-    $crumbs = [
-        ['name' => $siteTitle !== '' ? $siteTitle : '首页', 'url' => $siteUrl . '/']
-    ];
-    try {
-        $postCategories = $this->categories;
-        if (is_array($postCategories)) {
-            foreach (array_slice($postCategories, 0, 1) as $catRow) {
-                $catUrl = lt_safe_url((string) ($catRow['permalink'] ?? ''));
-                $catName = trim(lt_text($catRow['name'] ?? ''));
-                if ($catUrl !== '' && $catName !== '') {
-                    $crumbs[] = ['name' => $catName, 'url' => $catUrl];
-                }
-            }
-        }
-    } catch (\Throwable $e) {  }
-    $crumbs[] = ['name' => lt_text($this->title ?? ''), 'url' => $canonicalUrl !== '' ? $canonicalUrl : $siteUrl];
-    $breadcrumb = $crumbs;
-}
-
-
-
-$navItems = [];
-$navMenuRaw = lt_filter_nav_menu(lt_text($this->options->navMenu ?? ''));
-if ($navMenuRaw !== '') {
-    foreach (lt_lines($navMenuRaw) as $line) {
-        $parts = array_map('trim', explode('|', $line, 2));
-        if (count($parts) !== 2 || $parts[0] === '' || $parts[1] === '') {
-            continue;
-        }
-
-        $url = lt_safe_url($parts[1]);
-        if ($url === '') {
-            continue;
-        }
-        $navItems[] = [
-            'permalink' => $url,
-            'title' => $parts[0]
-        ];
-    }
-}
-if (empty($navItems)) {
+// 导航菜单树（批次24）：构建器 JSON → 老格式 名称|URL → 自动列出独立页面，统一树结构渲染
+$navTree = lt_nav_tree($this->options);
+if ($navTree === []) {
     $pages = $this->widget('\Widget\Contents\Page\Rows');
     while ($pages->next()) {
-        $navItems[] = [
+        $navTree[] = [
+            'title' => lt_text($pages->title),
             'permalink' => lt_text($pages->permalink),
-            'title' => lt_text($pages->title)
+            'children' => [],
         ];
     }
 }
-
 
 $customCss = trim(lt_text($this->options->customCss ?? ''));
-
 $customCssEscaped = lt_escape_inline_code($customCss);
-
-// JSON-LD 结构化数据：逻辑统一前置，HTML 输出区仅保留 echo，保证 view-source 干净
-$ltLdJson = '';
-$ltBreadcrumbJson = '';
-// 密码保护文章跳过 Article 类型（date/author 元信息不应对外泄露），与同文件其他安全判断保持一致
-if ($isSingle && !$isHiddenSingle) {
-    $publisher = ['@type' => 'Organization', 'name' => $siteTitle];
-    if ($logoUrl !== '') {
-        $publisher['logo'] = ['@type' => 'ImageObject', 'url' => $logoUrl];
-    }
-    $ldJson = [
-        '@context' => 'https://schema.org',
-        '@type' => 'Article',
-        'headline' => $pageTitleMeta,
-        'mainEntityOfPage' => ['@type' => 'WebPage', '@id' => $canonicalUrl !== '' ? $canonicalUrl : $siteUrl],
-        'datePublished' => date('c', (int) $this->created),
-        'dateModified' => date('c', (int) ((($this->modified ?? 0) > 0) ? $this->modified : $this->created)),
-        'author' => ['@type' => 'Person', 'name' => lt_text($this->author->name ?? $this->author->screenName ?? '')],
-        'publisher' => $publisher
-    ];
-    if ($ogImage !== '') {
-        $ldJson['image'] = [$ogImage];
-    }
-    if ($pageDesc !== '') {
-        $ldJson['description'] = $pageDesc;
-    }
-    $ltLdJson = json_encode($ldJson, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_QUOT | JSON_HEX_APOS);
-} else {
-    $ltLdJson = json_encode([
-        '@context' => 'https://schema.org',
-        '@type' => 'WebSite',
-        'name' => $siteTitle,
-        'url' => $siteUrl,
-        'potentialAction' => [
-            '@type' => 'SearchAction',
-            'target' => $searchLdTarget,
-            'query-input' => 'required name=search_term_string'
-        ]
-    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_QUOT | JSON_HEX_APOS);
-}
-if ($breadcrumb !== null) {
-    $breadcrumbItems = [];
-    $position = 1;
-    foreach ($breadcrumb as $crumb) {
-        if ($crumb['url'] === '' || $crumb['name'] === '') {
-            continue;
-        }
-        $breadcrumbItems[] = [
-            '@type' => 'ListItem',
-            'position' => $position++,
-            'name' => $crumb['name'],
-            'item' => $crumb['url'],
-        ];
-    }
-    $ltBreadcrumbJson = json_encode([
-        '@context' => 'https://schema.org',
-        '@type' => 'BreadcrumbList',
-        'itemListElement' => $breadcrumbItems,
-    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_QUOT | JSON_HEX_APOS);
-}
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -401,15 +157,15 @@ if ($breadcrumb !== null) {
     <script type="text/javascript" defer src="<?php $this->options->themeUrl('assets/vendor/prism/prism.min.js'); ?>?v=<?php echo $ltAssetVersion; ?>"></script>
 <?php endif; ?>
 <?php $this->header(
-        'generator=&template=&pingback=&xmlrpc=&wlw=&rss2=&rss1=&atom=&keywords=&social=0&description='
+        'generator=&template=&pingback=&xmlrpc=&wlw=&rss2=&rss1=&atom=&keywords=&social=0&description=&commentReply='
     ); ?>
     <title><?php echo $pageTitle; ?></title>
 <?php if ($customCssEscaped !== ''): ?>
-    <style><?php echo $customCssEscaped; ?></style>
+    <style nonce="<?php echo lt_esc_attr(lt_generate_csp_nonce()); ?>"><?php echo $customCssEscaped; ?></style>
 <?php endif; ?>
 </head>
 <body id="blog_container" class="<?php echo $themeModeNum === 4 ? 'bg-auto' : 'bg' . $themeModeNum; ?>">
-<script>
+<script nonce="<?php echo lt_esc_attr(lt_generate_csp_nonce()); ?>">
     (function () {
         var cfgEl = document.getElementById('lt-config');
         var cfg = cfgEl ? JSON.parse(cfgEl.textContent) : {};
@@ -430,9 +186,7 @@ if ($breadcrumb !== null) {
 <?php endif; ?>
         </a>
         <div class="navbar-menu">
-<?php foreach ($navItems as $item): ?>
-                <a class="navbar-item hover-line" href="<?php echo lt_esc_attr($item['permalink']); ?>"><?php echo lt_esc_html($item['title']); ?></a>
-<?php endforeach; ?>
+<?php echo lt_nav_render_desktop($navTree); ?>
             <button type="button" id="nav-search-btn" class="navbar-item nav-search-btn" aria-label="搜索">搜索</button>
         </div>
         <div class="navbar-mobile-menu">
@@ -443,11 +197,7 @@ if ($breadcrumb !== null) {
                 <span></span>
             </div>
             <ul id="mobile-menu-list">
-<?php foreach ($navItems as $item): ?>
-                    <li>
-                        <a href="<?php echo lt_esc_attr($item['permalink']); ?>"><?php echo lt_esc_html($item['title']); ?></a>
-                    </li>
-<?php endforeach; ?>
+<?php $ltNavSeq = 0; echo lt_nav_render_mobile($navTree, $ltNavSeq); ?>
                 <li>
                     <button type="button" id="nav-search-btn-mobile" class="nav-search-btn-mobile" aria-label="搜索">搜索</button>
                 </li>

@@ -11,7 +11,7 @@ if (!defined('__TYPECHO_ROOT_DIR__')) exit;
 // ============================================================
 
 $sidebarMemos = trim(lt_text($this->options->sidebarMemos ?? ''));
-$sidebarAdCode = trim(lt_text($this->options->sidebarAdCode ?? ''));
+$sidebarAdCode = trim(lt_safe_ad_html(lt_text($this->options->sidebarAdCode ?? '')));
 // 目录树开关：后台主题面板配置优先，文章自定义字段可单独覆盖（字段为空时回退后台配置）
 $directoryField = lt_text($this->fields->directoryStatus ?? '');
 $directoryOn = ($directoryField !== '' ? $directoryField : lt_text($this->options->directoryStatus ?? 'off')) === 'on';
@@ -50,36 +50,10 @@ try {
 } catch (\Throwable $e) { }
 
 // ============================================================
-// 侧边栏静态缓存（文件缓存，避免每页重复聚合查询）
+// 侧边栏静态缓存（统一缓存层 lt_cache_remember，避免每页重复聚合查询）
 // 热门文章 TTL 300s；站点信息 TTL 600s；缓存文件位于主题根目录 cache/sidebar_*.php，
 // 内容以 PHP 退出守卫前缀（短开标签加 exit 语句）防直读；如需强制刷新可删除对应缓存文件
 // ============================================================
-$sidebarCacheDir = __DIR__ . '/cache';
-$ltSidebarCache = static function (string $key, int $ttl, callable $load) use ($sidebarCacheDir) {
-    $cacheFile = $sidebarCacheDir . '/sidebar_' . md5($key) . '.php';
-    if (is_file($cacheFile) && time() - (int) @filemtime($cacheFile) < $ttl) {
-        $raw = @file_get_contents($cacheFile);
-        if ($raw !== false && strpos($raw, '<?php exit; ?>') === 0) {
-            $decoded = json_decode(substr($raw, strlen('<?php exit; ?>')), true);
-            if (is_array($decoded)) {
-                return $decoded;
-            }
-        }
-    }
-    $data = $load();
-    if (is_array($data)) {
-        if (!is_dir($sidebarCacheDir)) {
-            @mkdir($sidebarCacheDir, 0755, true);
-        }
-        if (is_dir($sidebarCacheDir) && is_writable($sidebarCacheDir)) {
-            $tmp = $cacheFile . '.tmp.' . bin2hex(random_bytes(4));
-            if (@file_put_contents($tmp, '<?php exit; ?>' . json_encode($data, JSON_UNESCAPED_UNICODE), LOCK_EX) !== false) {
-                @rename($tmp, $cacheFile);
-            }
-        }
-    }
-    return $data;
-};
 ?>
 
 <!-- 模块 1：文章目录 -->
@@ -188,7 +162,7 @@ if ($sidebarRecentPosts instanceof \Widget\Contents\Post\Recent && $sidebarRecen
 <?php
 $sidebarHot = [];
 if (in_array('hot', $sidebarActiveModules, true)) {
-    $sidebarHot = $ltSidebarCache('hot_top5', 300, function () {
+    $sidebarHot = lt_cache_remember('sidebar', 'hot_top5', 300, function () {
         $rows = [];
         try {
             $db = \Typecho\Db::get();
@@ -328,7 +302,7 @@ if (!empty($sidebarTagRows)): ?>
 <div class="sidebar-widget widget-siteinfo">
     <h3 class="widget-title"><?php _e('站点信息'); ?></h3>
 <?php
-    $sidebarStats = $ltSidebarCache('siteinfo', 600, function () {
+    $sidebarStats = lt_cache_remember('sidebar', 'siteinfo', 600, function () {
         $stats = ['posts' => 0, 'comments' => 0, 'categories' => 0, 'tags' => 0, 'days' => 0, 'updated' => 0];
         try {
             $db = \Typecho\Db::get();

@@ -58,7 +58,7 @@ if (!in_array($postLayout, ['right', 'left', 'none'], true)) {
 }
 $layoutClass = $postLayout === 'none' ? 'no-sidebar' : 'sidebar-' . $postLayout;
 $commentsNum = (int) ($this->commentsNum ?? 0);
-$postAdSlot = trim(lt_text($this->options->postAdSlot ?? ''));
+$postAdSlot = trim(lt_safe_ad_html(lt_text($this->options->postAdSlot ?? '')));
 
 if ($isPost && $cid > 0 && !$this->hidden) {
     lt_increment_views($cid);
@@ -77,71 +77,24 @@ $_postPlainText = '';
 // ===== 字数 / 阅读时长前置计算（必须在 post-meta 输出之前完成，否则显示恒为初始 1/0）=====
 $ltCid = (int) $this->cid;
 $ltConfigHash = lt_get_config_hash();
-$ltCachedRaw = ($ltCid > 0 && $isPost && !$this->hidden) ? lt_content_cache_get($ltCid) : null;
 $ltCacheHit = false;
 $ltCachedContent = '';
-$ltCachedChars = null;
-$ltCachedSummary = '';
-if ($ltCachedRaw !== null && $ltCachedRaw !== '' && strpos($ltCachedRaw, '||') !== false) {
-    // 缓存格式：hash||chars||summary||content（旧格式 hash||content 自动降级补算）
-    $ltCacheParts = explode('||', $ltCachedRaw, 4);
-    $ltCachedHash = $ltCacheParts[0];
-    if (count($ltCacheParts) === 4) {
-        $ltCachedChars = (int) $ltCacheParts[1];
-        $ltCachedSummary = $ltCacheParts[2];
-        $ltCachedContent = $ltCacheParts[3];
-    } else {
-        $ltCachedContent = $ltCacheParts[1];
-    }
-    if (stripos($ltCachedContent, '此内容被密码保护') === 0) {
-        lt_content_cache_delete($ltCid);
-        lt_delete_field($ltCid, 'ltProcessedContent');
-        $ltCachedRaw = null;
-    } elseif ($ltCachedHash === $ltConfigHash) {
+if ($ltCid > 0 && $isPost && !$this->hidden) {
+    $ltCached = lt_content_cache_load($ltCid, $ltConfigHash);
+    if ($ltCached !== null) {
         $ltCacheHit = true;
-        if ($ltCachedChars !== null && $ltCachedChars > 0) {
-            $wordCount = $ltCachedChars;
-            $readingMinutes = max(1, (int) ceil($ltCachedChars / 400));
-            $_postPlainText = $ltCachedSummary;
-        } else {
-            // 旧格式缓存（hash||content 两段，chars 缺失）或 chars=0：
-            // 用缓存正文补算字数并升级缓存为四段，避免显示「全文 0 字」
-            $ltCachedText = html_entity_decode(strip_tags((string) $ltCachedContent), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-            $ltTmpText = preg_replace('/[\s\x{00A0}]+/u', ' ', $ltCachedText);
-            if ($ltTmpText === null) {
-                $ltTmpText = str_replace(["\r\n", "\r", "\n", "\t"], ' ', $ltCachedText);
-                $ltTmpText = str_replace("\xC2\xA0", ' ', $ltTmpText);
-            }
-            $ltCachedText = trim($ltTmpText);
-            $wordCount = mb_strlen($ltCachedText, 'UTF-8');
-            if ($wordCount === 0 && trim((string) strip_tags((string) $ltCachedContent)) !== '') {
-                $ltCachedText = trim((string) strip_tags((string) $ltCachedContent));
-                $wordCount = mb_strlen($ltCachedText, 'UTF-8');
-            }
-            $readingMinutes = max(1, (int) ceil($wordCount / 400));
-            $_postPlainText = $ltCachedText;
-            lt_content_cache_set($ltCid, $ltConfigHash . '||' . $wordCount . '||' . str_replace('||', '｜', \Typecho\Common::subStr($ltCachedText, 0, 100, '...')) . '||' . $ltCachedContent);
-        }
+        $ltCachedContent = $ltCached['content'];
+        $wordCount = $ltCached['chars'];
+        $readingMinutes = max(1, (int) ceil($ltCached['chars'] / 400));
+        $_postPlainText = $ltCached['summary'];
     }
 }
 if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
     // 未命中：直接以渲染后正文计算字数（content 属性经 Typecho ___content() 缓存，正文输出不重复渲染）
-    $_rawPlain = html_entity_decode(strip_tags(lt_text($this->content ?? '')), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-    $_tmpPlain = preg_replace('/[\s\x{00A0}]+/u', ' ', $_rawPlain);
-    if ($_tmpPlain === null) {
-        // /u 正则遇非法 UTF-8 会返回 null，回退为字符级空白替换
-        $_tmpPlain = str_replace(["\r\n", "\r", "\n", "\t"], ' ', $_rawPlain);
-        $_tmpPlain = str_replace("\xC2\xA0", ' ', $_tmpPlain);
-    }
-    $_postPlainText = trim($_tmpPlain);
-    $_charCount = mb_strlen($_postPlainText, 'UTF-8');
-    if ($_charCount === 0 && trim((string) strip_tags(lt_text($this->content ?? ''))) !== '') {
-        // 兜底：正文非空而计数为 0 时，退回基础去标签计数，避免显示「全文 0 字」
-        $_postPlainText = trim((string) strip_tags(lt_text($this->content ?? '')));
-        $_charCount = mb_strlen($_postPlainText, 'UTF-8');
-    }
-    $wordCount = $_charCount;
-    $readingMinutes = max(1, (int) ceil($_charCount / 400));
+    $ltStats = lt_content_plain_stats(lt_text($this->content ?? ''));
+    $_postPlainText = $ltStats['text'];
+    $wordCount = $ltStats['chars'];
+    $readingMinutes = $ltStats['minutes'];
 }
 ?>
 <?php $this->need('header.php'); ?>
@@ -158,107 +111,18 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
 <?php
                 // 面包屑分类：无分类（独立页面/未分类文章）时不输出中间段，避免「首页 -> -> 标题」
                 // 多分类时按分类层级展示：首页 -> 一级分类 -> 二级分类 -> 三级分类 -> 正文（取层级最深分类作主路径）
+                // 层级链构建复用 lt_post_breadcrumb_chain（content.php），与 meta.php JSON-LD BreadcrumbList 保持一致
                 $breadCatHtml = '';
                 if (is_array($this->categories ?? null) && !empty($this->categories)) {
-                    $ltCatMap = [];
-                    foreach ($this->categories as $ltCatRow) {
-                        $ltMid = (int) ($ltCatRow['mid'] ?? 0);
-                        if ($ltMid <= 0) { continue; }
-                        $ltCatMap[$ltMid] = [
-                            'mid'       => $ltMid,
-                            'name'      => trim(lt_text($ltCatRow['name'] ?? '')),
-                            'slug'      => trim((string) ($ltCatRow['slug'] ?? '')),
-                            'permalink' => trim((string) ($ltCatRow['permalink'] ?? '')),
-                            'parent'    => (int) ($ltCatRow['parent'] ?? 0),
-                        ];
+                    $ltBreadChain = lt_post_breadcrumb_chain($this->categories, (string) $this->options->index);
+                    $ltBreadLinks = [];
+                    foreach ($ltBreadChain as $ltRow) {
+                        $ltBreadLinks[] = ($ltRow['url'] !== '')
+                            ? '<a href="' . lt_esc_attr($ltRow['url']) . '">' . lt_esc_html($ltRow['name']) . '</a>'
+                            : '<span>' . lt_esc_html($ltRow['name']) . '</span>';
                     }
-                    if (!empty($ltCatMap)) {
-                        // 沿 parent 链补查父分类（多轮批量查询，防脏数据死循环上限 4 轮）
-                        try {
-                            $ltDb = \Typecho\Db::get();
-                            $ltNeed = [];
-                            foreach ($ltCatMap as $ltRow) {
-                                if ($ltRow['parent'] > 0) { $ltNeed[$ltRow['parent']] = true; }
-                            }
-                            $ltGuard = 0;
-                            while (!empty($ltNeed) && $ltGuard++ < 4) {
-                                $ltIds = array_keys($ltNeed);
-                                $ltNeed = [];
-                                $ltRows = $ltDb->fetchAll($ltDb->select('mid', 'name', 'slug', 'parent')
-                                    ->from('table.metas')
-                                    ->where('type = ?', 'category')
-                                    ->where('mid IN ?', $ltIds));
-                                foreach ($ltRows as $ltR) {
-                                    $ltRmid = (int) $ltR['mid'];
-                                    $ltCatMap[$ltRmid] = [
-                                        'mid'       => $ltRmid,
-                                        'name'      => trim(lt_text($ltR['name'] ?? '')),
-                                        'slug'      => trim((string) ($ltR['slug'] ?? '')),
-                                        'permalink' => '',
-                                        'parent'    => (int) $ltR['parent'],
-                                    ];
-                                    if ((int) $ltR['parent'] > 0 && !isset($ltCatMap[(int) $ltR['parent']])) {
-                                        $ltNeed[(int) $ltR['parent']] = true;
-                                    }
-                                }
-                            }
-                        } catch (\Throwable $e) {
-                            // 查询失败回退为仅用文章已带分类（不阻断页面渲染）
-                        }
-                        // 选择层级最深的主路径分类（同深度取文章顺序首个）
-                        $ltBest = null;
-                        $ltBestDepth = -1;
-                        foreach ($ltCatMap as $ltRow) {
-                            $ltDepth = 0;
-                            $ltP = $ltRow['parent'];
-                            $ltVisited = [];
-                            while ($ltP > 0 && !isset($ltVisited[$ltP]) && $ltDepth < 10) {
-                                $ltVisited[$ltP] = true;
-                                if (isset($ltCatMap[$ltP])) {
-                                    $ltDepth++;
-                                    $ltP = $ltCatMap[$ltP]['parent'];
-                                } else {
-                                    break;
-                                }
-                            }
-                            if ($ltDepth > $ltBestDepth) {
-                                $ltBestDepth = $ltDepth;
-                                $ltBest = $ltRow['mid'];
-                            }
-                        }
-                        // 沿主路径 parent 链构建层级（根 -> 叶子），生成面包屑
-                        $ltChain = [];
-                        if ($ltBest !== null) {
-                            $ltCur = $ltBest;
-                            $ltVisited = [];
-                            $ltGuard2 = 0;
-                            while ($ltCur > 0 && !isset($ltVisited[$ltCur]) && $ltGuard2++ < 10) {
-                                $ltVisited[$ltCur] = true;
-                                if (!isset($ltCatMap[$ltCur])) { break; }
-                                $ltChain[] = $ltCatMap[$ltCur];
-                                $ltCur = $ltCatMap[$ltCur]['parent'];
-                            }
-                            $ltChain = array_reverse($ltChain);
-                            $ltBreadLinks = [];
-                            foreach ($ltChain as $ltRow) {
-                                if ($ltRow['name'] === '') { continue; }
-                                $ltUrl = $ltRow['permalink'];
-                                if ($ltUrl === '' && $ltRow['slug'] !== '') {
-                                    try {
-                                        $ltUrl = (string) \Typecho\Router::url('category', ['slug' => $ltRow['slug']], $this->options->index);
-                                    } catch (\Throwable $e) {
-                                        $ltUrl = '';
-                                    }
-                                }
-                                $ltUrl = lt_safe_url($ltUrl);
-                                $ltBreadLinks[] = ($ltUrl !== '')
-                                    ? '<a href="' . lt_esc_attr($ltUrl) . '">' . lt_esc_html($ltRow['name']) . '</a>'
-                                    : '<span>' . lt_esc_html($ltRow['name']) . '</span>';
-                            }
-                            if (!empty($ltBreadLinks)) {
-                                $breadCatHtml = implode('<span class="breadcrumb-sep">-&gt;</span>', $ltBreadLinks);
-                            }
-                        }
+                    if (!empty($ltBreadLinks)) {
+                        $breadCatHtml = implode('<span class="breadcrumb-sep">-&gt;</span>', $ltBreadLinks);
                     }
                 }
                 ?>
@@ -310,100 +174,12 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
                     } else {
                         ob_start();
                         $this->content();
-                        $content = (string) ob_get_clean();
-
-                    $ltImgIndex = 0;
-
-                    $ltAnchors = [];
-                    $_tmp = preg_replace_callback(
-                        '/<a\b[^>]*>.*?<\/a>/is',
-                        function (array $matches) use (&$ltAnchors): string {
-                            $key = '@@LT_ANCHOR_' . count($ltAnchors) . '@@';
-                            $ltAnchors[$key] = $matches[0];
-                            return $key;
-                        },
-                        $content
-                    );
-                    $content = $_tmp !== null ? $_tmp : $content;
-
-                    $_tmp = preg_replace_callback(
-                        '/<img\b[^>]*>/i',
-                        function (array $matches) use ($title, &$ltImgIndex): string {
-                            $tag = $matches[0];
-                            $src = '';
-                            if (preg_match('/(?<![-\w])src=(["\'])(.*?)\1/i', $tag, $sm)) {
-                                $src = lt_safe_url((string) ($sm[2] ?? ''));
-                            }
-                            if ($src === '') {
-                                return $tag;
-                            }
-                            $alt = '';
-                            if (preg_match('/(?<![-\w])alt=(["\'])(.*?)\1/i', $tag, $am)) {
-                                $alt = trim((string) ($am[2] ?? ''));
-                            }
-                            if ($alt === '') {
-                                $alt = $title;
-                            }
-                            $newImg = preg_replace_callback(
-                                '/(?<![-\w])src=(["\'])(.*?)\1/i',
-                                function (array $m) use ($src): string {
-                                    return 'src="' . lt_esc_attr($src) . '"';
-                                },
-                                $tag
-                            );
-
-                            $insertAttr = static function (string $tag, string $attr): string {
-                                if (preg_match('/\/>\s*$/', $tag)) {
-                                    return preg_replace('/\/>\s*$/', ' ' . $attr . ' />', $tag);
-                                }
-                                if (preg_match('/>\s*$/', $tag)) {
-                                    return preg_replace('/>\s*$/', ' ' . $attr . '>', $tag);
-                                }
-                                return $tag . ' ' . $attr;
-                            };
-                            if (!preg_match('/(?<![-\w])alt=/i', $newImg)) {
-                                $newImg = $insertAttr($newImg, 'alt="' . lt_esc_attr($alt) . '"');
-                            }
-
-                            if (!preg_match('/\sloading=/i', $newImg)) {
-                                if ($ltImgIndex === 0) {
-                                    $newImg = $insertAttr($newImg, 'loading="eager" fetchpriority="high"');
-                                } else {
-                                    $newImg = $insertAttr($newImg, 'loading="lazy"');
-                                }
-                            }
-                            $ltImgIndex++;
-                            return '<a href="' . lt_esc_attr($src) . '" class="fancybox" data-fancybox="gallery">' . $newImg . '</a>';
-                        },
-                        $content
-                    );
-                    $content = $_tmp !== null ? $_tmp : $content;
-
-                    $content = strtr($content, $ltAnchors);
-
-                    $_tmp = preg_replace_callback(
-                        '/<pre\b([^>]*)>/i',
-                        function (array $matches): string {
-                            $attrs = $matches[1];
-                            if (preg_match('/\bclass=["\'][^"\']*line-numbers/i', $attrs)) {
-                                return $matches[0];
-                            }
-                            if (preg_match('/\bclass=["\']([^"\']*)["\']/i', $attrs, $cm)) {
-                                $attrs = str_replace($cm[0], 'class="' . trim($cm[1]) . ' line-numbers"', $attrs);
-                            } else {
-                                $attrs .= ' class="line-numbers"';
-                            }
-                            return '<pre' . $attrs . '>';
-                        },
-                        $content
-                    );
-                    $content = $_tmp !== null ? $_tmp : $content;
-
-                    if ($ltCid > 0) {
-                        // 写缓存：chars 与摘要由上方前置计算块产出（post-meta 输出前已算好），此处不再重复计算
-                        lt_content_cache_set($ltCid, $ltConfigHash . '||' . $wordCount . '||' . str_replace('||', '｜', \Typecho\Common::subStr($_postPlainText, 0, 100, '...')) . '||' . $content);
-                    }
-                    echo $content;
+                        $ltProcessed = lt_content_render_pipeline((string) ob_get_clean(), $title);
+                        if ($ltCid > 0) {
+                            // 写缓存：chars 与摘要由上方前置计算块产出（post-meta 输出前已算好），此处不再重复计算
+                            lt_content_cache_set($ltCid, lt_content_cache_payload($ltConfigHash, $wordCount, $_postPlainText, $ltProcessed));
+                        }
+                        echo $ltProcessed;
                     }
                     ?>
 <?php else: ?>

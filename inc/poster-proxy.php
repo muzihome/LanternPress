@@ -15,7 +15,7 @@
  *   - IPv6 字面量归一化后统一做 IP 校验（私网/回环/链路本地/保留段拒绝）；
  *   - DNS 解析校验：域名型目标请求前解析全部 A/AAAA 记录，任一解析结果属私网/回环/
  *     链路本地/保留段则拒绝；解析失败同样拒绝（DNS 重绑定防护，安全默认）；
- *   - 轻量限流：同一客户端 IP 窗口内计数（独立实现，不依赖 Typecho 环境）；
+ *   - 轻量限流：统一走主题缓存层 lt_check_rate_limit（滑动窗口，cache/rate_limit_*.php）；
  *   - 仅输出位图类型（webp/png/jpg/gif/avif/ico），禁止 svg（防内嵌脚本执行）；
  *     无扩展名时以内容嗅探（getimagesizefromstring）兜底；
  *   - 响应体大小上限 5MB；带站点 Referer 访问（兼容图床防盗链）；
@@ -26,13 +26,19 @@
  */
 declare(strict_types=1);
 
-// ---- 图床域名静态白名单（不含协议与端口）----
-// 安全基线：仅放行此处显式配置的域名；精确匹配 'img.example.com'，前缀通配 '.example.com'
+// ---- 图床域名白名单（后台「文章页组件」→ posterProxyHosts 配置下发）----
+// 安全基线：仅放行后台显式配置的域名；精确匹配 'img.example.com'，前缀通配 '.example.com'
 // （匹配 a.example.com / b.example.com 等子域）。站点自身域名的图片为同域直连，无需走代理。
-$extraHosts = [
-    // 'img.example.com',
-    // '.oss.example.com',
-];
+// 配置由主题每次页面渲染写入 cache/poster_hosts.php（lt_sync_poster_hosts，域名白名单校验后原子写）；
+// 本端点独立于 Typecho 引导运行，直接 include 该文件。文件缺失/为空时回退空白名单（安全默认，恒 403）。
+$extraHosts = [];
+$ltPosterHostsFile = dirname(__DIR__) . '/cache/poster_hosts.php';
+if (is_file($ltPosterHostsFile)) {
+    $ltExtraHosts = @include $ltPosterHostsFile;
+    if (is_array($ltExtraHosts)) {
+        $extraHosts = $ltExtraHosts;
+    }
+}
 
 // ---- 安全配置 ----
 // 回环地址（127.x/localhost/::1）放行开关：本地开发调试时可置 true；
@@ -130,80 +136,37 @@ if (!$isAllowed) {
     exit('forbidden');
 }
 
-// 轻量限流：同一客户端 IP 窗口内计数（独立实现，不依赖 Typecho 环境）
+// 限流与 Referer 协议判断均依赖 security.php（lt_get_client_ip / lt_is_https），无条件加载。
+// 本端点独立于 Typecho 引导运行，security.php / cache.php 为纯函数模块（无 Typecho 类依赖），
+// 定义守卫常量后直接加载即可复用
+if (!defined('__TYPECHO_ROOT_DIR__')) {
+    define('__TYPECHO_ROOT_DIR__', dirname(__DIR__, 4));
+}
+require_once __DIR__ . '/security.php';
+require_once __DIR__ . '/cache.php';
+
+// 轻量限流：统一走主题缓存层 lt_check_rate_limit（滑动窗口，与点赞/浏览量同套实现）。
+// IP 口径与前台一致用 lt_get_client_ip（采信可信代理白名单内的转发头），
+// 避免反代部署下全站共用 REMOTE_ADDR 单一限流桶被耗尽
 if ($rateLimit > 0) {
-    $ltClientIp = (string)($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
-    // 限流文件路径：优先 sys_get_temp_dir()，失败时按优先级 fallback 到主题同级 cache 目录、最后回退到 '/tmp'
-    // '/tmp' 在 Windows 上通常不存在（@is_dir 会返回 false），但第 144 行对其做了特殊放行直接进入 is_writable 检查；
-    // Windows 环境下这个 fallback 自然跳过，不会报错或阻塞请求
-    $ltRateBaseDirs = [
-        rtrim(sys_get_temp_dir(), '/\\'),
-        rtrim(__DIR__ . '/../cache', '/\\'),
-        '/tmp',
-    ];
-    $ltRateDir = '';
-    foreach ($ltRateBaseDirs as $ltCand) {
-        if ($ltCand !== '' && ($ltCand === '/tmp' || @is_dir($ltCand) || @mkdir($ltCand, 0755, true))) {
-            if (@is_writable($ltCand)) {
-                $ltRateDir = $ltCand;
-                break;
-            }
-        }
-    }
-    if ($ltRateDir !== '') {
-        $ltRateFile = $ltRateDir . '/lt-poster-' . md5($ltClientIp) . '.tmp';
-        $ltNow = time();
-        $ltFp = @fopen($ltRateFile, 'c+');
-        if ($ltFp !== false) {
-            if (@flock($ltFp, LOCK_EX)) {
-                $ltRaw = (string)@stream_get_contents($ltFp);
-                $ltCount = 0;
-                $ltWindowStart = $ltNow;
-                // 固定窗口：窗口起点保留至窗口期届满才重置（此前误按秒级时间戳相等判定，窗口实为 1 秒）
-                if (preg_match('/^(\d+):(\d+)$/', trim($ltRaw), $ltM) === 1 && ($ltNow - (int)$ltM[1]) < $rateWindow) {
-                    $ltCount = (int)$ltM[2];
-                    $ltWindowStart = (int)$ltM[1];
-                }
-                if ($ltCount >= $rateLimit) {
-                    @flock($ltFp, LOCK_UN);
-                    @fclose($ltFp);
-                    http_response_code(429);
-                    header('Content-Type: text/plain; charset=utf-8');
-                    exit('rate limited');
-                }
-                rewind($ltFp);
-                @ftruncate($ltFp, 0);
-                @fwrite($ltFp, $ltWindowStart . ':' . ($ltCount + 1));
-                @fflush($ltFp);
-                @flock($ltFp, LOCK_UN);
-            }
-            @fclose($ltFp);
-        }
-    } else {
-        // 所有 fallback 路径都不可写：限流完全失效，写入 PHP error_log 供运维排查
-        error_log('[LanternPress poster-proxy] rate-limit file dir not writable, check open_basedir / SELinux / sys_get_temp_dir');
+    if (!lt_check_rate_limit('poster_' . lt_get_client_ip(), $rateLimit, $rateWindow)) {
+        http_response_code(429);
+        header('Content-Type: text/plain; charset=utf-8');
+        exit('rate limited');
     }
 }
 
-// Referer 协议与站点实际协议一致（http 部署时防盗链图床按 http 校验）；
-// 转发协议头仅在可信代理白名单内采信（与主题 lt_is_https 同源策略），防伪造
-$ltRemoteAddr = !empty($_SERVER['REMOTE_ADDR']) ? trim((string) $_SERVER['REMOTE_ADDR']) : '';
-$ltTrustedProxies = defined('LT_TRUSTED_PROXY_IPS') ? LT_TRUSTED_PROXY_IPS : null;
-$ltProxyList = is_array($ltTrustedProxies)
-    ? $ltTrustedProxies
-    : (is_string($ltTrustedProxies) && $ltTrustedProxies !== ''
-        ? array_map('trim', explode(',', $ltTrustedProxies))
-        : []);
-$isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-    || (int) ($_SERVER['SERVER_PORT'] ?? 0) === 443
-    || ((($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https') && in_array($ltRemoteAddr, $ltProxyList, true));
+// Referer 协议与站点实际协议一致（http 部署时防盗链图床按 http 校验），复用主题 lt_is_https
+// （转发协议头仅在可信代理白名单内采信，防伪造）
+$isHttps = lt_is_https();
 $referer = $siteHostClean !== ''
     ? (($isHttps ? 'https' : 'http') . '://' . $siteHostClean . '/')
     : '';
 
 // DNS 重绑定 TOCTOU 加固：将请求固定到此前已校验的解析 IP，
 // 使"DNS 校验通过"与"实际请求"指向同一 IP，消除校验后解析结果被篡改的窗口。
-// cURL 不可用时回退 file_get_contents（保留 TOCTOU 风险，但静态域名白名单已大幅收敛攻击面）。
+// cURL 不可用时回退 file_get_contents（回退分支缺少 CURLOPT_RESOLVE 的 IP 固定，
+// 理论上保留 DNS 重绑定风险——但静态域名白名单已大幅收敛攻击面）。
 $resolvedIps = $resolvedIps ?? [];
 $fetchPort = $port > 0 ? $port : ($scheme === 'https' ? 443 : 80);
 $pinnedIp = null;

@@ -1,5 +1,6 @@
 # 统一 LF 行尾（Linux/WSL/服务器部署环境）
 * text=auto eol=lf
+
 *.php text eol=lf
 *.md text eol=lf
 *.css text eol=lf

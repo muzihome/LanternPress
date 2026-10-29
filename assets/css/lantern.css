@@ -308,6 +308,209 @@ body .site-container .navbar .navbar-mobile-menu{
   body .site-container .navbar .navbar-mobile-menu>ul li a:active{
     color:#cc493d;
   }
+/* ===== 导航多级菜单（批次24）：移动端手风琴 ===== */
+body .site-container .navbar .navbar-mobile-menu>ul li.has-sub>a{
+  width:112px;
+}
+body .site-container .navbar .navbar-mobile-menu>ul li .mobile-sub-toggle{
+  position:absolute;
+  top:0;
+  right:0;
+  width:28px;
+  height:49px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:0;
+  background:transparent;
+  border:none;
+  cursor:pointer;
+  color:#555;
+}
+body .site-container .navbar .navbar-mobile-menu>ul li .mobile-sub-toggle svg{
+  transition:transform .2s;
+}
+body .site-container .navbar .navbar-mobile-menu>ul li .mobile-sub-toggle.open svg{
+  transform:rotate(180deg);
+}
+body .site-container .navbar .navbar-mobile-menu>ul ul.mobile-sub{
+  display:none;
+}
+body .site-container .navbar .navbar-mobile-menu>ul ul.mobile-sub li a{
+  width:112px;
+  padding:8px 25px 8px 33px;
+  background:#e6e2d8;
+  font-size:14px;
+}
+.bg3 .site-container .navbar .navbar-mobile-menu>ul ul.mobile-sub li a{
+  background:#242222;
+}
+}
+/* ===== 导航多级菜单（批次24+）：桌面下拉，样式优化（2026-10-30） =====
+   要点：①一级/二级有子级项显示箭头指示符（▾/▸）；②二级卡=纸张底+顶部指示三角+双阴影；
+   ③三级卡=浅色底+左侧 accent 线+独立偏移；④hover 强调色文字+左侧 accent 条；
+   ⑤项间虚线分隔（报纸印刷风）；⑥opacity/translateY 平滑过渡（visibility 延迟隐藏）；
+   ⑦bg0-3 四主题适配（背景/边框/三角/阴影/accent 全变量化） */
+body .site-container .navbar .navbar-menu .navbar-item-wrap{
+  display:flex;
+  align-items:center;
+}
+body .site-container .navbar .navbar-menu .navbar-item-wrap.has-sub{
+  position:relative;
+}
+/* 一级有子级项：inline-flex 对齐展开箭头 */
+body .site-container .navbar .navbar-menu .navbar-item-wrap.has-sub > .navbar-item{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+}
+body .site-container .navbar .navbar-menu .navbar-item-wrap.has-sub > .navbar-item .nav-arrow-down{
+  flex:none;
+  opacity:.75;
+}
+/* 二级下拉卡片：顶部指示三角（::after）+ 透明 hover 桥（::before）+ 双阴影 + 平滑过渡 */
+body .site-container .navbar .navbar-menu .navbar-item-wrap.has-sub .navbar-sub{
+  position:absolute;
+  top:calc(100% + 10px);
+  left:-6px;
+  z-index:20;
+  min-width:200px;
+  margin:0;
+  padding:8px 0;
+  list-style:none;
+  background:#f9f7f1;
+  border:1px solid #2f2f2f;
+  border-radius:8px;
+  box-shadow:0 2px 4px rgba(60,40,20,.10), 0 8px 20px rgba(60,40,20,.14);
+  opacity:0;
+  visibility:hidden;
+  transform:translateY(6px);
+  transition:opacity .18s ease, transform .18s ease, visibility .18s;
+}
+/* 透明桥：hover 穿越卡片与顶栏之间的空隙不断链 */
+body .site-container .navbar .navbar-menu .navbar-item-wrap.has-sub .navbar-sub::before{
+  content:"";
+  position:absolute;
+  left:0;
+  right:0;
+  top:-12px;
+  height:12px;
+}
+/* 顶部指示三角（指向触发项） */
+body .site-container .navbar .navbar-menu .navbar-item-wrap.has-sub .navbar-sub::after{
+  content:"";
+  position:absolute;
+  top:-7px;
+  left:18px;
+  width:12px;
+  height:12px;
+  background:#f9f7f1;
+  border-left:1px solid #2f2f2f;
+  border-top:1px solid #2f2f2f;
+  transform:rotate(45deg);
+}
+body .site-container .navbar .navbar-menu .navbar-item-wrap.has-sub:hover>.navbar-sub,
+body .site-container .navbar .navbar-menu .navbar-item-wrap.has-sub:focus-within>.navbar-sub{
+  opacity:1;
+  visibility:visible;
+  transform:translateY(0);
+}
+/* 二级/三级项：flex 两端对齐（子级箭头靠右） */
+body .site-container .navbar .navbar-sub li{
+  position:relative;
+  list-style:none;
+  margin:0;
+}
+body .site-container .navbar .navbar-sub li a{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:9px 18px;
+  font-size:15px;
+  line-height:1.5;
+  white-space:nowrap;
+  color:inherit;
+  text-decoration:none;
+  transition:background-color .15s ease, color .15s ease;
+}
+body .site-container .navbar .navbar-sub li.has-sub > a .nav-arrow-right{
+  flex:none;
+  opacity:.8;
+}
+/* hover / 焦点：强调色文字 + 左侧 accent 条 + 浅砖红底 */
+body .site-container .navbar .navbar-sub li a:hover,
+body .site-container .navbar .navbar-sub li a:focus-visible{
+  background:rgba(166,91,74,.10);
+  color:#a85b4a;
+  box-shadow:inset 3px 0 0 #cc493d;
+}
+/* 项间虚线分隔（报纸印刷风） */
+body .site-container .navbar .navbar-sub li + li{
+  border-top:1px dashed rgba(47,47,47,.18);
+}
+/* 三级下拉卡片：浅色底 + 独立偏移 + 小阴影 */
+body .site-container .navbar .navbar-sub li.has-sub>.navbar-sub{
+  top:-8px;
+  left:calc(100% + 6px);
+  min-width:190px;
+  padding:6px 0;
+  background:#f3efe6;
+  border-radius:6px;
+  box-shadow:0 2px 4px rgba(60,40,20,.10), 0 6px 16px rgba(60,40,20,.12);
+}
+body .site-container .navbar .navbar-sub li.has-sub>.navbar-sub li a{
+  font-size:14px;
+}
+body .site-container .navbar .navbar-sub li.has-sub:hover>.navbar-sub,
+body .site-container .navbar .navbar-sub li.has-sub:focus-within>.navbar-sub{
+  opacity:1;
+  visibility:visible;
+  transform:translateY(0);
+}
+/* 桌面下拉主题适配（bg0 复古黄沿用上方默认；bg1 纯白 / bg2 灰白 / bg3 暗夜黑） */
+.bg1 .site-container .navbar .navbar-menu .navbar-item-wrap.has-sub .navbar-sub{
+  background:#fff;
+  border-color:#333;
+  box-shadow:0 2px 4px rgba(0,0,0,.08), 0 8px 20px rgba(0,0,0,.12);
+}
+.bg1 .site-container .navbar .navbar-menu .navbar-item-wrap.has-sub .navbar-sub::after{
+  background:#fff;
+  border-color:#333 #333 transparent transparent;
+}
+.bg1 .site-container .navbar .navbar-sub li.has-sub>.navbar-sub{
+  background:#f6f6f6;
+}
+.bg2 .site-container .navbar .navbar-menu .navbar-item-wrap.has-sub .navbar-sub{
+  background:#fff;
+  border-color:#1c1f33;
+  box-shadow:0 2px 4px rgba(28,31,51,.08), 0 8px 20px rgba(28,31,51,.14);
+}
+.bg2 .site-container .navbar .navbar-menu .navbar-item-wrap.has-sub .navbar-sub::after{
+  background:#fff;
+  border-color:#1c1f33 #1c1f33 transparent transparent;
+}
+.bg2 .site-container .navbar .navbar-sub li.has-sub>.navbar-sub{
+  background:#f2f4f8;
+}
+.bg3 .site-container .navbar .navbar-menu .navbar-item-wrap.has-sub .navbar-sub{
+  background:#2c2a2a;
+  border-color:#d0d3d8;
+  box-shadow:0 2px 4px rgba(0,0,0,.25), 0 8px 20px rgba(0,0,0,.4);
+}
+.bg3 .site-container .navbar .navbar-menu .navbar-item-wrap.has-sub .navbar-sub::after{
+  background:#2c2a2a;
+  border-color:#d0d3d8 #d0d3d8 transparent transparent;
+}
+.bg3 .site-container .navbar .navbar-sub li.has-sub>.navbar-sub{
+  background:#242222;
+  border-color:#d0d3d8;
+}
+.bg3 .site-container .navbar .navbar-sub li a:hover,
+.bg3 .site-container .navbar .navbar-sub li a:focus-visible{
+  background:rgba(204,73,61,.18);
+  color:#ff8a80;
+  box-shadow:inset 3px 0 0 #ff6f5e;
 }
 body .site-container .navbar.animated{
   -webkit-animation-duration:.5s;

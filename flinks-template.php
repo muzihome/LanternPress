@@ -50,6 +50,8 @@ try {
             $ltApplyLogo = lt_safe_url(trim($ltLm[1]));
             $ltRawText = (string) substr($ltRawText, strlen($ltLm[0]));
         }
+        // 剥离 Markdown 强调标记（**加粗** / _斜体_ / `代码` / ~~删除线~~），避免残留星号
+        $ltRawText = (string) preg_replace('/[*_~`]{1,3}([^*_~`\n]+)[*_~`]{1,3}/u', '$1', $ltRawText);
         $ltApplyDesc = trim(strip_tags($ltRawText));
         $ltApplyLinks[] = [
             'name' => $ltApplyName,
@@ -190,20 +192,6 @@ $ltRenderFlink = static function (array $l): void {
 <?php $security = $this->widget('\Widget\Security'); ?>
                         <input type="hidden" name="_" value="<?php echo lt_esc_attr($security->getToken($this->request->getRequestUrl())); ?>">
                     </form>
-                    <script>
-                        (function(){
-                            var f=document.getElementById('flinks-apply-form');
-                            if(!f){return;}
-                            f.addEventListener('submit',function(){
-                                var logo=document.getElementById('logo');
-                                var ta=document.getElementById('textarea');
-                                if(logo&&ta&&logo.value.trim()!==''){
-                                    var v=logo.value.trim();
-                                    if(ta.value.indexOf('[logo]')!==0){ta.value='[logo]'+v+'[/logo]\n'+ta.value;}
-                                }
-                            });
-                        })();
-                    </script>
 <?php else: ?>
                     <p class="flinks-apply-hint"><?php _e('友链申请已关闭。'); ?></p>
 <?php endif; ?>

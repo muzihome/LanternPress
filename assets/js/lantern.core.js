@@ -67,6 +67,7 @@ constructor() {
     this.initMobileMenuClose();
     this.initSearchModal();
     this.initArticleLinks();
+    this.initFlinksApply();
     this.initNavbar();
     this.initRecommendSlider();
     if (!window.LANTERTOWN_CONFIG) {
@@ -143,6 +144,21 @@ if (e.key === 'Enter' || e.key === ' ') {
 e.preventDefault();
 toggleMenu();
 }
+});
+// 批次24：移动端多级菜单手风琴（事件委托，展开/收起子菜单）
+list.addEventListener('click', (e) => {
+const toggle = e.target.closest('.mobile-sub-toggle');
+if (!toggle) {
+return;
+}
+const sub = document.getElementById(toggle.getAttribute('data-target'));
+if (!sub) {
+return;
+}
+const open = toggle.classList.toggle('open');
+sub.style.display = open ? 'block' : 'none';
+toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+toggle.setAttribute('aria-label', open ? '收起子菜单' : '展开子菜单');
 });
 }
 }
@@ -575,6 +591,21 @@ if (e.target.closest('a, button')) return;
 e.preventDefault();
 const href = item.getAttribute('data-href');
 if (href) window.location.href = href;
+});
+}
+initFlinksApply() {
+// 友链申请表单：提交时把 logo 值 prepend 到 textarea（替代 flinks-template.php 内联脚本，批次26 移除以消除 unsafe-inline 依赖）
+const form = document.getElementById('flinks-apply-form');
+if (!form) return;
+form.addEventListener('submit', function () {
+const logo = document.getElementById('logo');
+const ta = document.getElementById('textarea');
+if (logo && ta && logo.value.trim() !== '') {
+const v = logo.value.trim();
+if (ta.value.indexOf('[logo]') !== 0) {
+ta.value = '[logo]' + v + '[/logo]\n' + ta.value;
+}
+}
 });
 }
 }

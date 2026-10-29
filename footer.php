@@ -15,7 +15,7 @@ $siteTitle = lt_text($this->options->title ?? '');
 $ltIsSingleFooter = $this->is('post') || $this->is('page');
 
 $customJsEscaped = lt_escape_inline_code($customJs);
-$statisticsCodeEscaped = lt_escape_inline_code($statisticsCode);
+$statisticsCodeSafe = lt_safe_ad_html($statisticsCode);
 
 ?>
 </main>
@@ -44,10 +44,10 @@ $statisticsCodeEscaped = lt_escape_inline_code($statisticsCode);
         <script defer src="<?php $this->options->themeUrl('assets/js/lantern.post.js'); ?>?v=<?php echo lt_esc_attr(LT_ASSET_VERSION); ?>"></script>
 <?php endif; ?>
 <?php if ($customJsEscaped !== ''): ?>
-        <script><?php echo $customJsEscaped; ?></script>
+        <script nonce="<?php echo lt_esc_attr(lt_generate_csp_nonce()); ?>"><?php echo $customJsEscaped; ?></script>
 <?php endif; ?>
-<?php if ($statisticsCodeEscaped !== ''): ?>
-<?php echo $statisticsCodeEscaped . "\n"; ?>
+<?php if ($statisticsCodeSafe !== ''): ?>
+<?php echo lt_add_nonce_to_scripts($statisticsCodeSafe, lt_generate_csp_nonce()) . "\n"; ?>
 <?php endif; ?>
 <?php $this->footer(); ?>
 </footer>
