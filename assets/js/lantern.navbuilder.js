@@ -359,11 +359,19 @@
     if (!tree.length) {
       treeBox.appendChild(el('p', 'lt-nb-empty', '菜单为空。可从上方添加菜单项；保持为空时前台将自动显示所有独立页面。'));
     } else {
-      tree.forEach(function (node) {
-        treeBox.appendChild(renderNode(node));
-      });
+      renderNodes(tree);
     }
     sync();
+  }
+
+  // 递归渲染整棵菜单树：子级（node.c）以缩进行平铺展示，方可对二级/三级项继续编辑
+  function renderNodes(nodes) {
+    nodes.forEach(function (node) {
+      treeBox.appendChild(renderNode(node));
+      if (node.c && node.c.length) {
+        renderNodes(node.c);
+      }
+    });
   }
 
   // ---------- 数据源面板（分类 / 独立页面 / 自定义链接） ----------
