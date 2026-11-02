@@ -111,14 +111,57 @@ function lt_cache_remember(string $group, string $key, int $ttl, callable $load)
         $raw = lt_cache_read($path);
         if ($raw !== null) {
             $decoded = json_decode($raw, true);
-            if (is_array($decoded)) {
+            if (is_array($decoded) || is_string($decoded)) {
                 return $decoded;
             }
         }
     }
+    // L1：缓存击穿锁——重建期间以锁文件互斥，避免多进程并发重建同一键（低流量站点无实际并发，锁开销可忽略）
+    $lockFile = $dir . '/' . $group . '_' . md5($key) . '.lock';
+    $fp = @fopen($lockFile, 'c');
+    $locked = false;
+    if ($fp !== false) {
+        if (@flock($fp, LOCK_EX | LOCK_NB)) {
+            $locked = true;
+            // 抢到锁后二次读缓存：并发进程中可能已由先到者写入
+            if (is_file($path) && time() - (int) @filemtime($path) < $ttl) {
+                $raw2 = lt_cache_read($path);
+                if ($raw2 !== null) {
+                    $decoded2 = json_decode($raw2, true);
+                    if (is_array($decoded2) || is_string($decoded2)) {
+                        @flock($fp, LOCK_UN);
+                        @fclose($fp);
+                        return $decoded2;
+                    }
+                }
+            }
+        }
+    }
+    // 未抢到锁（并发进程正在重建同一键）→ 回退读旧缓存（允许已过期的陈旧数据），
+    // 避免雪崩式并发重建与重复回源；仅冷启动（无任何旧缓存）才自行计算
+    if (!$locked) {
+        if ($fp !== false) {
+            @fclose($fp); // 未持锁时关闭句柄，避免请求内 fd 泄漏
+        }
+        if (is_file($path)) {
+            $rawStale = lt_cache_read($path);
+            if ($rawStale !== null) {
+                $decodedStale = json_decode($rawStale, true);
+                if (is_array($decodedStale) || is_string($decodedStale)) {
+                    return $decodedStale;
+                }
+            }
+        }
+    }
     $data = $load();
-    if (is_array($data)) {
-        lt_cache_write($path, (string) json_encode($data, JSON_UNESCAPED_UNICODE));
+    // 放宽为 array|string：友链页 page 段返回整页 HTML 字符串，同样允许缓存（P3 修复）；
+    // 上限提到 512KB，避免长友链页 HTML 超 60KB 默认限静默失去缓存
+    if (is_array($data) || is_string($data)) {
+        lt_cache_write($path, (string) json_encode($data, JSON_UNESCAPED_UNICODE), 512 * 1024);
+    }
+    if ($locked && $fp !== false) {
+        @flock($fp, LOCK_UN);
+        @fclose($fp);
     }
     return $data;
 }
@@ -130,6 +173,33 @@ function lt_cache_forget(string $group, string $key): void
         return;
     }
     lt_cache_delete($dir . '/' . $group . '_' . md5($key) . '.php');
+}
+
+// ============================================================
+// 评论列表版本号（评论缓存失效面）：
+// 评论列表按 cid 缓存为 comment 组下 "list-{cid}-{ver}-{page}" 的多个 key（md5 平铺，无法按前缀枚举），
+// 故以"版本号"实现整篇评论列表统一失效——提交 / 审核 / 删除时 bump 版本号，
+// 旧 ver 下所有页缓存因 key 变化自然 miss（TTL 兜底清理）；低流量站点无并发递增风险（丢失最多延后 TTL 内失效）。
+// ============================================================
+function lt_comment_list_ver(int $cid): int
+{
+    $dir = lt_cache_dir();
+    if ($dir === '') {
+        return 0;
+    }
+    $path = $dir . '/comment_list_ver_' . $cid . '.php';
+    $raw = lt_cache_read($path);
+    return $raw !== null ? (int) trim($raw) : 0;
+}
+
+function lt_comment_list_bump(int $cid): void
+{
+    $dir = lt_cache_dir();
+    if ($dir === '' || $cid <= 0) {
+        return;
+    }
+    $path = $dir . '/comment_list_ver_' . $cid . '.php';
+    lt_cache_write($path, (string) (lt_comment_list_ver($cid) + 1), 32);
 }
 
 // ============================================================

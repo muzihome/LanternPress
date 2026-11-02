@@ -10,8 +10,15 @@ if (!defined('__TYPECHO_ROOT_DIR__')) exit;
 
 // script-src 由 lt_build_csp_policy() 动态注入 nonce，此处仅保留除 script-src 外的其余指令
 // （script-src 每次请求变化，不能用 define 硬编码）
-// style-src 同样用 nonce（批次27），style-attr 'unsafe-inline' 单独放行 style="..." 属性（CSP Level 3）
-define('LT_CSP_BASE', "default-src 'self'; style-src 'self' 'STYLE_NONCE_PLACEHOLDER' https:; style-attr 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https:; media-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'");
+// style-src 同样用 nonce（批次27），style-src-attr 'unsafe-inline' 单独放行 style="..." 属性（CSP Level 3 正确指令名）
+define('LT_CSP_BASE', "default-src 'self'; style-src 'self' 'STYLE_NONCE_PLACEHOLDER' https:; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https:; media-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'");
+
+// 广告/统计第三方脚本域白名单：默认空=仅 self+nonce。启用广告位脚本时在此追加域名
+// （如 'https://pagead2.googlesyndication.com https://*.googlesyndication.com'），
+// 勿用 'https:' 全放行（会绕过 nonce 保护）。可在 config.inc.php 或主题配置中覆盖。
+if (!defined('LT_CSP_SCRIPT_SRC_EXTRA')) {
+    define('LT_CSP_SCRIPT_SRC_EXTRA', '');
+}
 
 // CSP nonce（批次26）：per-request 随机值，所有 <script nonce="xxx"> 需匹配才放行。
 // 去掉 script-src 'unsafe-inline' 的前提——主题硬编码的 inline JS 已移至 lantern.core.js，
@@ -69,7 +76,10 @@ function lt_build_csp_policy(): string
 {
     $nonce = lt_generate_csp_nonce();
     $base = str_replace("'STYLE_NONCE_PLACEHOLDER'", "'nonce-{$nonce}'", LT_CSP_BASE);
-    return "script-src 'self' 'nonce-{$nonce}'; " . $base;
+    // 追加广告/统计第三方脚本域白名单（默认空；LT_CSP_SCRIPT_SRC_EXTRA 可配置）
+    $scriptExtra = defined('LT_CSP_SCRIPT_SRC_EXTRA') && is_string(LT_CSP_SCRIPT_SRC_EXTRA)
+        ? ' ' . trim(LT_CSP_SCRIPT_SRC_EXTRA) : '';
+    return "script-src 'self' 'nonce-{$nonce}'{$scriptExtra}; " . $base;
 }
 
 // 给 HTML 片段内所有 <style> 标签加 nonce="xxx"（批次27，与 lt_add_nonce_to_scripts 对称）
@@ -110,6 +120,8 @@ function lt_send_security_headers(): void
     header('X-Content-Type-Options: nosniff');
     header('X-Frame-Options: SAMEORIGIN');
     header('Referrer-Policy: strict-origin-when-cross-origin');
+    // 站点无任何需要摄像头/麦克风/定位的功能，显式禁用收紧浏览器能力面（#4）
+    header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
 
     header('Content-Security-Policy: ' . lt_build_csp_policy());
     // 主题身份标记：方便运维排查 header 冲突（其他插件/内核可能覆盖 CSP）
@@ -193,4 +205,61 @@ function lt_get_client_ip(): string
     }
 
     return filter_var($ip, FILTER_VALIDATE_IP) ? $ip : 'unknown';
+}
+
+// ============================================================
+// poster-proxy SSRF 防护纯函数（与端点同源规则，可离线单测）
+// ============================================================
+
+// 公网 IP 判定：私网/回环/链路本地/保留段一律视为非公网（false）。
+// IPv4/IPv6 统一走 filter_var 内建 flags，非法字符串同样 false（安全默认）。
+function lt_poster_ip_is_public(string $ip): bool
+{
+    if (filter_var($ip, FILTER_VALIDATE_IP) === false) {
+        return false;
+    }
+    return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
+}
+
+// 代理目标静态判定（不触网）：http/https 协议白名单 + 端口仅 80/443/默认 +
+// 静态域名白名单（精确或 '.domain' 前缀通配）+ 回环地址需显式开关。
+// DNS 解析校验含网络副作用，保留在端点内联执行；本函数覆盖全部离线可测规则。
+function lt_poster_target_allowed(string $scheme, string $host, int $port, array $extraHosts, bool $allowLoopback = false): bool
+{
+    $host = trim(strtolower($host), '[]');
+    $scheme = strtolower($scheme);
+    $portOk = $port === 0 || $port === 80 || $port === 443;
+
+    $isLocalLoop = $host === 'localhost' || $host === '::1'
+        || preg_match('/^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/', $host) === 1;
+
+    $isExtra = false;
+    foreach ($extraHosts as $eh) {
+        $eh = strtolower(trim((string) $eh));
+        if ($eh === '') {
+            continue;
+        }
+        if ($eh === $host || (str_starts_with($eh, '.') && str_ends_with($host, $eh))) {
+            $isExtra = true;
+            break;
+        }
+    }
+
+    return in_array($scheme, ['http', 'https'], true)
+        && $host !== ''
+        && $portOk
+        && ($isExtra || ($isLocalLoop && $allowLoopback));
+}
+
+// 点赞接口 CSRF 双候选校验（纯函数）：当前请求 URL token 或 Referer token 任一匹配即通过。
+// 常数时间比较（hash_equals）；token 为空或候选均为空时恒 false（安全默认）。
+function lt_csrf_token_matches(string $token, string $expected, string $expectedReferer = ''): bool
+{
+    if ($token === '') {
+        return false;
+    }
+    if ($expected !== '' && hash_equals($expected, $token)) {
+        return true;
+    }
+    return $expectedReferer !== '' && hash_equals($expectedReferer, $token);
 }

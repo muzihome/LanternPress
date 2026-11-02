@@ -107,7 +107,7 @@ function lt_meta_build(object $widget, string $themeUrlFull): array
     }
 
     $ogImage = '';
-    $ogImageIsDefault = false; // true = 站点默认图（blog_bg），供海报功能识别"文章无封面"
+    $ogImageIsDefault = false; // true = 站点默认图（default-cover），供海报功能识别"文章无封面"
     if ($isSingle && !$isHiddenSingle) {
         // 文章主图（banner 字段）→ 正文首图 → 默认图；不走 indexThumbs 轮换（轮换图仅供列表缩略图，语义与具体文章不符）
         $ogImage = lt_text($widget->fields->bannerUrl ?? '');
@@ -115,12 +115,13 @@ function lt_meta_build(object $widget, string $themeUrlFull): array
             $ogImage = lt_content_image(lt_text($widget->content ?? ''));
         }
         if ($ogImage === '') {
-            $ogImage = rtrim($themeUrlFull, '/') . '/assets/img/blog_bg.jpg';
+            // og:image 面向社交爬虫，用兼容性更广的 webp（页面内展示由前端 image-set 优先加载 avif）
+            $ogImage = rtrim($themeUrlFull, '/') . '/assets/img/default-cover.webp';
             $ogImageIsDefault = true;
         } else {
             $ogImage = lt_safe_url($ogImage);
         }
-        if (str_contains($ogImage, '/assets/img/blog_bg.jpg')) {
+        if (str_contains($ogImage, '/assets/img/default-cover')) {
             $ogImageIsDefault = true;
         }
     } elseif ($logoUrl !== '') {
@@ -129,7 +130,7 @@ function lt_meta_build(object $widget, string $themeUrlFull): array
     }
 
     if ($ogImage === '') {
-        $ogImage = rtrim($themeUrlFull, '/') . '/assets/img/blog_bg.jpg';
+        $ogImage = rtrim($themeUrlFull, '/') . '/assets/img/default-cover.webp';
         $ogImageIsDefault = true;
     }
 

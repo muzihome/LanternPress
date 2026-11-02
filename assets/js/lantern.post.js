@@ -551,6 +551,26 @@ behavior: 'smooth'
 return false;
 }
 };
+// M2：回复/取消回复事件委托（替代内核内联 onclick，兼容 nonce-only CSP）
+document.addEventListener('click', (e) => {
+const link = e.target && e.target.closest ? e.target.closest('.comment-reply-link, .cancel-comment-reply-link') : null;
+if (!link) {
+return;
+}
+e.preventDefault();
+if (!window.TypechoComment) {
+return;
+}
+if (link.classList.contains('comment-reply-link')) {
+const cid = link.getAttribute('data-cid');
+const coid = link.getAttribute('data-coid');
+if (cid) {
+window.TypechoComment.reply(cid, coid);
+}
+} else {
+window.TypechoComment.cancelReply();
+}
+});
 this.initCommentAjax();
 };
 
@@ -561,11 +581,70 @@ return;
 const self = this;
 document.addEventListener('submit', (e) => {
 const form = e.target;
-if (form && form.id === 'comment-form') {
+if (!form) {
+return;
+}
+if (form.id === 'comment-form') {
 e.preventDefault();
 self.handleCommentSubmit(form);
+} else if (form.id === 'flinks-apply-form') {
+e.preventDefault();
+self.handleFlinksApplySubmit(form);
 }
 });
+};
+
+proto.handleFlinksApplySubmit = function (form) {
+const showBox = (type, msg) => {
+form.parentNode.querySelectorAll('.comment-form-status').forEach((b) => b.remove());
+const box = document.createElement('div');
+box.className = 'comment-form-status ' + type;
+box.setAttribute('role', 'status');
+box.textContent = msg;
+form.parentNode.insertBefore(box, form);
+};
+const extractError = (html) => {
+const patterns = [
+/(评论内容不能为空|请输入评论内容|评论内容过长|请输入正确的邮箱地址|邮箱格式不正确|评论提交过于频繁|请稍后再试|验证码错误|请输入验证码|请输入昵称|昵称不能为空)/,
+/(对不起[^<。；;]{0,40})/,
+/(页面已过期|请刷新页面后重试|系统错误)/
+];
+for (const p of patterns) {
+const m = html.match(p);
+if (m) {
+return m[1];
+}
+}
+return null;
+};
+(async () => {
+const submitBtn = form.querySelector('button[type="submit"]');
+if (submitBtn) {
+submitBtn.disabled = true;
+}
+const formData = new FormData(form);
+try {
+const resp = await fetch(form.action, {
+method: 'POST',
+body: formData,
+credentials: 'same-origin',
+headers: { 'X-Requested-With': 'XMLHttpRequest' }
+});
+const html = await resp.text();
+if (!resp.ok) {
+const msg = resp.status === 403 ? '请求已过期，请刷新页面后重试' : (extractError(html) || '提交失败，请检查填写内容后重试');
+showBox('error', msg);
+return;
+}
+showBox('success', '提交成功，等待管理员审核。');
+form.reset();
+} catch (err) {
+showBox('error', '网络异常，请稍后重试');
+}
+if (submitBtn) {
+submitBtn.disabled = false;
+}
+})();
 };
 
 proto.handleCommentSubmit = function (form) {
@@ -967,11 +1046,11 @@ proto.initPoster = function () {
 				const titleEl = document.querySelector('.post-title');
 				const title = titleEl ? String(titleEl.textContent || '').replace(/\s+/g, ' ').trim() : String(document.title || '');
 				let coverImg = null;
-				// 封面优先级：服务端标识（theme:poster_cover=0 表示无封面）→ 路径兜底（blog_bg.jpg 兼容旧缓存）
+				// 封面优先级：服务端标识（theme:poster_cover=0 表示无封面）→ 路径兜底（default-cover 兼容旧缓存）
 				// 无封面时跳过 og:image，继续尝试正文首图 → 再无则随机封面
 				const coverFlagEl = document.querySelector('meta[name="theme:poster_cover"]');
 				const coverIsDefault = (coverFlagEl && coverFlagEl.content === '0')
-					|| (!coverFlagEl && og && og.content && /blog_bg\.jpg/i.test(String(og.content).trim()));
+					|| (!coverFlagEl && og && og.content && /(blog_bg\.jpg|default-cover\.(?:avif|webp))/i.test(String(og.content).trim()));
 				if (og && og.content && !coverIsDefault) {
 					coverImg = await this.loadPosterCover(og.content);
 				}

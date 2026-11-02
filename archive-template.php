@@ -61,17 +61,17 @@ $groups = lt_cache_remember('archive', 'archive', 3600, function () {
             krsort($months);
             ?>
             <div class="archive-year"><?php printf(_t('%d 年（共 %d 篇）'), $year, $yearCount); ?></div>
-<?php foreach ($months as $month => $monthRows): ?>
                 <ul class="archive-list">
+<?php foreach ($months as $month => $monthRows): ?>
 <?php foreach ($monthRows as $row): ?>
 <?php $permalink = \Typecho\Router::url('post', $row, $this->options->index); ?>
                         <li>
-                            <a href="<?php echo lt_esc_attr($permalink); ?>"><?php echo lt_esc_html($row['title']); ?></a>
+                            <a href="<?php echo lt_esc_attr($permalink); ?>"><?php echo lt_esc_html(html_entity_decode($row['title'], ENT_QUOTES, 'UTF-8')); ?></a>
                             <time><?php echo date('Y-m-d', (int) $row['created']); ?></time>
                         </li>
 <?php endforeach; ?>
-                </ul>
 <?php endforeach; ?>
+                </ul>
 <?php endforeach; ?>
     </div>
 </div>

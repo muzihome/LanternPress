@@ -80,7 +80,8 @@ try {
         }
     }
 } catch (\Throwable $e) {
-
+    // 引导失败时回退默认 manifest 照常输出，但记录日志便于排查（不再静默吞错）
+    error_log('[LanternPress] manifest build failed | ' . get_class($e) . ': ' . $e->getMessage());
 }
 
 

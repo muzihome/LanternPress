@@ -48,10 +48,13 @@ $ltEagerRendered = false;
                 if ($ltCids !== []) {
                     try {
                         $ltDb = \Typecho\Db::get();
+                        // 显式指定列 + name 过滤：SELECT * 会把升级残留的 ltProcessedContent
+                        // 大文本字段（≤60KB/篇）一并读入内存，列表页预取只需 articleDesc/bannerUrl
                         $ltRows = $ltDb->fetchAll(
-                            $ltDb->select()
+                            $ltDb->select('cid', 'name', 'str_value')
                                 ->from('table.fields')
                                 ->where('cid IN ?', $ltCids)
+                                ->where('name IN ?', ['articleDesc', 'bannerUrl'])
                         );
                         foreach ($ltRows as $ltRow) {
                             $ltCid = (int) ($ltRow['cid'] ?? 0);
@@ -110,7 +113,9 @@ $ltEagerRendered = false;
                                 <div class="item-img <?php if ($greyImg) echo "color-filter"; ?>">
 <?php if ($thumb !== '' && $ltFirstScreen && !$ltEagerRendered): ?>
 <?php
-                                    $ltBgCss = "background-image:url('" . str_replace("'", "\\'", $thumb) . "')";
+                                    // 上线前审查修复：先剥离反斜杠（杜绝 CSS 十六进制转义 \27 闭合 url() 字符串），
+                                    // 再转义单引号（防属性内字符串逃逸）；URL 中反斜杠本非法，剥离不影响地址语义
+                                    $ltBgCss = "background-image:url('" . str_replace("'", "\\'", str_replace("\\", "", $thumb)) . "')";
                                     $ltEagerRendered = true;
                                     ?>
                                     <div class="blog-background loaded" style="<?php echo lt_esc_attr($ltBgCss); ?>"></div>

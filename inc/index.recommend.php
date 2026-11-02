@@ -19,7 +19,8 @@ if (!defined('__TYPECHO_ROOT_DIR__')) exit;
             $db = \Typecho\Db::get();
 
             $rows = $db->fetchAll(
-                $db->select()
+                // 显式列清单（替代 SELECT *）：仅取推荐位渲染与 permalink 路由所需字段
+                $db->select('cid', 'title', 'slug', 'created', 'modified', 'text', 'authorId', 'template', 'type', 'status', 'password')
                     ->from('table.contents')
                     ->where('type = ?', 'post')
                     ->where('status = ?', 'publish')

@@ -146,6 +146,7 @@ $customCssEscaped = lt_escape_inline_code($customCss);
 <?php endif; ?>
     <link rel="stylesheet" type="text/css" media="all" href="<?php $this->options->themeUrl('assets/css/iconfont.min.css'); ?>?v=<?php echo $ltAssetVersion; ?>"/>
     <link rel="stylesheet" type="text/css" media="all" href="<?php $this->options->themeUrl('assets/css/lantern.min.css'); ?>?v=<?php echo $ltAssetVersion; ?>"/>
+    <link rel="preload" href="<?php $this->options->themeUrl('assets/fonts/iconfont.woff2'); ?>" as="font" type="font/woff2" crossorigin/>
     <script type="application/json" id="lt-config"><?php
         // 配置以 application/json 形式输出（非可执行脚本），前端通过 DOM 读取后解析，
         // 消除内联可执行脚本对 CSP 'unsafe-inline' 的依赖（Typecho 评论系统仍需 unsafe-inline）。
@@ -156,9 +157,15 @@ $customCssEscaped = lt_escape_inline_code($customCss);
     <link rel="stylesheet" href="<?php $this->options->themeUrl('assets/vendor/prism/prism.min.css'); ?>?v=<?php echo $ltAssetVersion; ?>"/>
     <script type="text/javascript" defer src="<?php $this->options->themeUrl('assets/vendor/prism/prism.min.js'); ?>?v=<?php echo $ltAssetVersion; ?>"></script>
 <?php endif; ?>
-<?php $this->header(
+<?php
+    // 捕获 Typecho 内核 header() 输出并统一为其内联脚本加 nonce
+    // （含评论表单 _ token 混淆脚本，无 nonce 时会被 CSP 拦）
+    ob_start();
+    $this->header(
         'generator=&template=&pingback=&xmlrpc=&wlw=&rss2=&rss1=&atom=&keywords=&social=0&description=&commentReply='
-    ); ?>
+    );
+    echo lt_add_nonce_to_scripts((string) ob_get_clean(), lt_generate_csp_nonce());
+    ?>
     <title><?php echo $pageTitle; ?></title>
 <?php if ($customCssEscaped !== ''): ?>
     <style nonce="<?php echo lt_esc_attr(lt_generate_csp_nonce()); ?>"><?php echo $customCssEscaped; ?></style>
