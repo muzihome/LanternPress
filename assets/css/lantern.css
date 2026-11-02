@@ -887,6 +887,10 @@ body .site-container .post .post-container .post-title{
   letter-spacing:2px;
   line-height:50px;
 }
+/* 友链页：增大「友情链接」标题与友链列表间距（仅友链页，不影响文章页） */
+body .site-container .post .post-container.flinks-page .post-title{
+  margin-bottom:40px;
+}
 body .site-container .post .post-container .post-meta{
   font-size:12px;
   text-align:center;
@@ -902,6 +906,21 @@ body .site-container .post .post-container .post-content .flinks-container{
   display:flex;
   flex-wrap:wrap;
   gap:14px;
+}
+/* 注意：原 content-visibility:auto 隐含 paint containment，会裁剪第一行卡片 hover 上移(translateY -3px)
+   后溢出到容器盒顶部的边框/聚焦环，故移除；友链页卡片数量少，离屏渲染优化收益可忽略 */
+body .site-container .post .post-container .post-content .flinks-container .flink-group-title{
+  flex-basis:100%;
+  width:100%;
+  margin:10px 0 2px;
+  font-size:15px;
+  font-weight:700;
+  color:var(--heading-color, #333);
+  letter-spacing:.5px;
+  line-height:1.4;
+}
+body .site-container .post .post-container .post-content .flinks-container .flink-group-title:first-child{
+  margin-top:0;
 }
 /* 友链卡片（自动解析模式，批次16 美化） */
 body .site-container .post .post-container .post-content .flinks-container .flink-card{
@@ -1972,6 +1991,7 @@ body .footer{
 }
 .archive-page .archive-list li a{
   color:inherit;
+  line-height:24px; /* 固定行高，消除中英文字体行高差异导致的行距不统一 */
 }
 .archive-page .archive-list time{
   font-size:13px;

@@ -110,7 +110,9 @@ $ltEagerRendered = false;
                                 <div class="item-img <?php if ($greyImg) echo "color-filter"; ?>">
 <?php if ($thumb !== '' && $ltFirstScreen && !$ltEagerRendered): ?>
 <?php
-                                    $ltBgCss = "background-image:url('" . str_replace("'", "\\'", $thumb) . "')";
+                                    // 上线前审查修复：先剥离反斜杠（杜绝 CSS 十六进制转义 \27 闭合 url() 字符串），
+                                    // 再转义单引号（防属性内字符串逃逸）；URL 中反斜杠本非法，剥离不影响地址语义
+                                    $ltBgCss = "background-image:url('" . str_replace("'", "\\'", str_replace("\\", "", $thumb)) . "')";
                                     $ltEagerRendered = true;
                                     ?>
                                     <div class="blog-background loaded" style="<?php echo lt_esc_attr($ltBgCss); ?>"></div>

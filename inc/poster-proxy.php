@@ -47,7 +47,8 @@ $allowLoopback = false;
 // TLS 校验开关：生产环境保持 true；若图床证书异常导致获取失败，可临时置 false 排查
 $verifyTls = true;
 // 轻量限流：同一客户端 IP 在 $rateWindow 秒窗口内的最大请求数（0 表示关闭限流）
-$rateLimit = 30;
+// 阈值 80 次/60s：友链页一屏 20+ 张代理图刷新 2-3 次仍有余量，避免误伤（原 30 偏严）
+$rateLimit = 80;
 $rateWindow = 60;
 
 // 客户端可控的 HTTP_HOST 仅用于拼接防盗链 Referer（图床按站点域名校验），
@@ -156,6 +157,25 @@ if ($rateLimit > 0) {
     }
 }
 
+// M3：落盘结果缓存（cache/poster/{md5(url)}.bin + .meta 旁注 Content-Type，TTL 7 天）。
+// 命中直接读盘，跳过上游回源；未命中回源成功后原子写缓存。
+$posterCacheDir = dirname(__DIR__) . '/cache/poster';
+$posterCacheKey = md5($url);
+$posterCacheBin = $posterCacheDir . '/' . $posterCacheKey . '.bin';
+$posterCacheMeta = $posterCacheDir . '/' . $posterCacheKey . '.meta';
+$posterCacheTtl = 7 * 24 * 3600;
+$posterCacheHit = false;
+$posterCachedMime = null;
+if (is_file($posterCacheBin) && is_file($posterCacheMeta)
+    && time() - (int) @filemtime($posterCacheBin) < $posterCacheTtl) {
+    $cached = @file_get_contents($posterCacheBin);
+    if ($cached !== false && $cached !== '') {
+        $posterCacheHit = true;
+        $data = $cached;
+        $posterCachedMime = trim((string) @file_get_contents($posterCacheMeta));
+    }
+}
+
 // Referer 协议与站点实际协议一致（http 部署时防盗链图床按 http 校验），复用主题 lt_is_https
 // （转发协议头仅在可信代理白名单内采信，防伪造）
 $isHttps = lt_is_https();
@@ -176,18 +196,23 @@ if (!empty($resolvedIps)) {
     $pinnedIp = $host;
 }
 
-$data = false;
-if ($pinnedIp !== null && function_exists('curl_init')) {
+if (!$posterCacheHit) {
+    $data = false;
+}
+if (!$posterCacheHit && $pinnedIp !== null && function_exists('curl_init')) {
     $ch = curl_init($url);
     $reqHeaders = ['User-Agent: Mozilla/5.0 (compatible; LanternPress/2.5.0)'];
     if ($referer !== '') {
         $reqHeaders[] = 'Referer: ' . $referer;
     }
+    // IPv6 字面量在 CURLOPT_RESOLVE 中需带方括号（[host]:port:[ipv6]），否则 cURL 解析失败（L8 修复）
+    $resolveIp = (str_contains((string)$pinnedIp, ':') && !str_starts_with((string)$pinnedIp, '['))
+        ? '[' . $pinnedIp . ']' : (string)$pinnedIp;
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT => 8,
         CURLOPT_FOLLOWLOCATION => false,
-        CURLOPT_RESOLVE => [$host . ':' . $fetchPort . ':' . $pinnedIp],
+        CURLOPT_RESOLVE => [$host . ':' . $fetchPort . ':' . $resolveIp],
         CURLOPT_HTTPHEADER => $reqHeaders,
         CURLOPT_SSL_VERIFYPEER => $verifyTls,
         CURLOPT_SSL_VERIFYHOST => $verifyTls ? 2 : 0,
@@ -228,30 +253,51 @@ if (strlen($data) > 5 * 1024 * 1024) {
 }
 
 // MIME 判定：扩展名白名单优先；无扩展名时以内容嗅探兜底（防误标 octet-stream）
-$ext = strtolower((string)pathinfo((string)parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION));
-$mime = match ($ext) {
-    'webp' => 'image/webp',
-    'png' => 'image/png',
-    'jpg', 'jpeg' => 'image/jpeg',
-    'gif' => 'image/gif',
-    'avif' => 'image/avif',
-    'ico' => 'image/x-icon',
-    default => 'application/octet-stream',
-};
-if ($mime === 'application/octet-stream') {
-    $imgInfo = @getimagesizefromstring($data);
-    if ($imgInfo !== false && isset($imgInfo['mime'])) {
-        $mime = match ($imgInfo['mime']) {
-            'image/webp' => 'image/webp',
-            'image/png' => 'image/png',
-            'image/jpeg' => 'image/jpeg',
-            'image/gif' => 'image/gif',
-            'image/avif' => 'image/avif',
-            'image/x-icon' => 'image/x-icon',
-            default => 'application/octet-stream',
-        };
+// 缓存命中时优先用旁注的 Content-Type（$posterCachedMime），避免重复嗅探
+if ($posterCacheHit && $posterCachedMime !== '' && str_starts_with($posterCachedMime, 'image/')) {
+    $mime = $posterCachedMime;
+} else {
+    $ext = strtolower((string)pathinfo((string)parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION));
+    $mime = match ($ext) {
+        'webp' => 'image/webp',
+        'png' => 'image/png',
+        'jpg', 'jpeg' => 'image/jpeg',
+        'gif' => 'image/gif',
+        'avif' => 'image/avif',
+        'ico' => 'image/x-icon',
+        default => 'application/octet-stream',
+    };
+    if ($mime === 'application/octet-stream') {
+        $imgInfo = @getimagesizefromstring($data);
+        if ($imgInfo !== false && isset($imgInfo['mime'])) {
+            $mime = match ($imgInfo['mime']) {
+                'image/webp' => 'image/webp',
+                'image/png' => 'image/png',
+                'image/jpeg' => 'image/jpeg',
+                'image/gif' => 'image/gif',
+                'image/avif' => 'image/avif',
+                'image/x-icon' => 'image/x-icon',
+                default => 'application/octet-stream',
+            };
+        }
     }
 }
+
+// M3：回源成功后原子写落盘缓存（body + mime 旁注，tmp + rename 防半写文件）
+if (!$posterCacheHit && $data !== false && $data !== '') {
+    if (!is_dir($posterCacheDir)) {
+        @mkdir($posterCacheDir, 0755, true);
+    }
+    $tmpBin = $posterCacheBin . '.tmp' . mt_rand();
+    if (@file_put_contents($tmpBin, $data) !== false) {
+        @rename($tmpBin, $posterCacheBin);
+        $tmpMeta = $posterCacheMeta . '.tmp' . mt_rand();
+        if (@file_put_contents($tmpMeta, $mime) !== false) {
+            @rename($tmpMeta, $posterCacheMeta);
+        }
+    }
+}
+
 header('Content-Type: ' . $mime);
 // CORS 收窄：仅允许站点自身 origin（同域图片代理无需 CORS；子域部署场景兼容），不再使用通配 *
 if ($siteHostClean !== '') {

@@ -292,7 +292,7 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
 
 <?php if ($postAdSlot !== ''): ?>
                     <div class="post-ad-slot">
-<?php echo $postAdSlot; ?>
+<?php echo lt_add_nonce_to_scripts($postAdSlot, lt_generate_csp_nonce()); ?>
                     </div>
 <?php endif; ?>
 

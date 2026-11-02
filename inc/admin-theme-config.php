@@ -376,6 +376,52 @@ function themeConfig(\Typecho\Widget\Helper\Form $form): void
         _t('国内访问 Gravatar 慢时可填镜像，如 https://cravatar.cn/avatar/；留空则使用官方 Gravatar')
     );
     $form->addInput($avatarProxy);
+
+    // ============ 缓存设置（EdgeOne CDN 自动刷新） ============
+    $edgeoneEnable = new \Typecho\Widget\Helper\Form\Element\Radio(
+        'ltEdgeoneEnable',
+        ['1' => _t('启用'), '0' => _t('停用')],
+        '0',
+        _t('EdgeOne CDN 自动刷新'),
+        _t('启用后，当后台发布/更新文章或页面后，下一次前台访问会自动清除腾讯云 EdgeOne 的缓存，让长 TTL 的匿名页面缓存即时刷新为新内容。需要先填写下方 ZoneId 与密钥并保存。')
+    );
+    $form->addInput($edgeoneEnable);
+
+    $edgeoneZoneId = new \Typecho\Widget\Helper\Form\Element\Text(
+        'ltEdgeoneZoneId',
+        null,
+        null,
+        _t('EdgeOne 站点 ID'),
+        _t('形如 zone-xxxxxxxxxxxxxxxx，在腾讯云 EdgeOne 控制台「站点管理」选中 muzihome.com，右上「站点概览」可复制。')
+    );
+    $form->addInput($edgeoneZoneId);
+
+    $edgeoneSecretId = new \Typecho\Widget\Helper\Form\Element\Text(
+        'ltEdgeoneSecretId',
+        null,
+        null,
+        _t('API 密钥 SecretId'),
+        _t('腾讯云「访问管理 → 用户 → API 密钥管理」创建的子账号密钥。强烈建议只为该子账号授予「EdgeOne 清除缓存」最小权限，不要把主账号密钥填在这里。')
+    );
+    $form->addInput($edgeoneSecretId);
+
+    $edgeoneSecretKey = new \Typecho\Widget\Helper\Form\Element\Password(
+        'ltEdgeoneSecretKey',
+        null,
+        null,
+        _t('API 密钥 SecretKey'),
+        _t('首次填写并保存后，此处将只显示占位符，密钥不回显到页面。如需更换请在下方输入新密钥并保存；留空表示保持当前密钥不变。密钥经主题自定义保存逻辑（themeConfigHandle）存入隐藏配置键，不写入日志。')
+    );
+    $form->addInput($edgeoneSecretKey);
+
+    $edgeoneMode = new \Typecho\Widget\Helper\Form\Element\Radio(
+        'ltEdgeoneMode',
+        ['all' => _t('整站缓存（推荐）'), 'dynamic' => _t('仅动态页（首页+分类+标签）')],
+        'all',
+        _t('清除范围'),
+        _t('「整站缓存」最稳妥，一次清除包括图片等在内的全部缓存；「仅动态页」只清除首页与 /category/、/tag/ 目录，静态资源缓存保留。个人博客建议选「整站缓存」。')
+    );
+    $form->addInput($edgeoneMode);
     } catch (\Throwable $e) {
         $buildError = $e;
     }
@@ -416,4 +462,83 @@ function themeFields(\Typecho\Widget\Helper\Layout $layout): void
         _t('开启后，文章页侧边栏将显示「文章目录」模块（目录随正文滚动高亮；移动端 ≤767px 不显示，避免小屏布局错乱）')
     );
     $layout->addItem($directoryStatus);
+}
+
+// ============================================================
+// themeConfigHandle — Typecho 主题配置自定义保存钩子（零内核，官方机制）
+// Typecho Widget\Themes\Edit 检测到本函数存在即调用；返回 true 表示由主题自行保存，
+// 不再走默认的 json 全量覆盖。
+//
+// 用途：EdgeOne SecretKey 不以明文回显后台页 + 「留空不修改」。
+//   - 真实密钥存 options['ltEdgeoneSecretKeyVal']（隐藏键，未在 themeConfig 定义 →
+//     后台表单既不回填也不回显、保存时亦不提交）；
+//   - options['ltEdgeoneSecretKey']（表单可见键）只存占位掩码 '********'，
+//     渲染时 Typecho 回填占位而非明文；
+//   - 表单提交非空 → 更新真实密钥并刷新掩码；提交为空/占位 → 保留原真实密钥。
+// 兼容：旧版直接存于占位键的真实密钥会在首次保存时自动迁移到隐藏键。
+// 失败时返回 false，回退 Typecho 默认保存（不破坏站点）。
+// ============================================================
+function themeConfigHandle(array $settings, bool $isInit): bool
+{
+    try {
+        $theme = 'LanternPress';
+        try {
+            $ltOpt = \Typecho\Widget::widget('Widget_Options');
+            if ($ltOpt && !empty($ltOpt->theme)) {
+                $theme = (string) $ltOpt->theme;
+            }
+        } catch (\Throwable $e) {
+        }
+        $key = 'theme:' . $theme;
+        $db = \Typecho\Db::get();
+
+        // 读 DB 原配置
+        $old = [];
+        $row = $db->fetchRow($db->select()->from('table.options')->where('name = ?', $key));
+        if ($row && !empty($row['value'])) {
+            $arr = json_decode((string) $row['value'], true);
+            if (is_array($arr)) {
+                $old = $arr;
+            }
+        }
+
+        // 合并：提交值覆盖旧值，但保留旧值中本次未提交的字段
+        // 拒绝客户端伪造隐藏密钥键：真实密钥仅由服务端按下方逻辑写入（隐藏键不回显、不提交）
+        unset($settings['ltEdgeoneSecretKeyVal']);
+        $merged = array_merge($old, $settings);
+
+        // ---- SecretKey 密钥处理 ----
+        $submittedKey = isset($settings['ltEdgeoneSecretKey'])
+            ? trim((string) $settings['ltEdgeoneSecretKey'])
+            : '';
+        if ($submittedKey !== '' && $submittedKey !== '********') {
+            // 用户填写了新密钥：真实值存隐藏键，占位键写掩码
+            $merged['ltEdgeoneSecretKeyVal'] = $submittedKey;
+            $merged['ltEdgeoneSecretKey'] = '********';
+        } else {
+            // 留空：保留原真实密钥（隐藏键），占位键保持掩码
+            $existing = isset($merged['ltEdgeoneSecretKeyVal'])
+                ? (string) $merged['ltEdgeoneSecretKeyVal']
+                : '';
+            if ($existing === ''
+                && isset($old['ltEdgeoneSecretKey'])
+                && (string) $old['ltEdgeoneSecretKey'] !== ''
+                && (string) $old['ltEdgeoneSecretKey'] !== '********') {
+                // 旧版直接存了真实密钥于占位键：迁移到隐藏键
+                $merged['ltEdgeoneSecretKeyVal'] = (string) $old['ltEdgeoneSecretKey'];
+            }
+            $merged['ltEdgeoneSecretKey'] = '********';
+        }
+
+        $val = json_encode($merged, JSON_UNESCAPED_UNICODE);
+        if ($row) {
+            $db->query($db->update('table.options')->rows(['value' => $val])->where('name = ?', $key));
+        } else {
+            $db->query($db->insert('table.options')->rows(['name' => $key, 'value' => $val, 'user' => 0]));
+        }
+        return true;
+    } catch (\Throwable $e) {
+        lt_log_error('themeConfigHandle failed', $e);
+        return false; // 失败回退 Typecho 默认保存
+    }
 }

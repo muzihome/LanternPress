@@ -12,31 +12,36 @@ $this->need('header.php');
 
 $tagCloud = [];
 try {
-    $db = \Typecho\Db::get();
-    $rows = $db->fetchAll(
-        $db->select('table.metas.mid', 'table.metas.name', 'table.metas.slug', 'COUNT(table.relationships.cid) AS cnt')
-            ->from('table.metas')
-            ->join('table.relationships', 'table.metas.mid = table.relationships.mid', \Typecho\Db::LEFT_JOIN)
-            ->join('table.contents', 'table.relationships.cid = table.contents.cid', \Typecho\Db::LEFT_JOIN)
-            ->where('table.metas.type = ?', 'tag')
-            ->where('table.contents.status = ? OR table.contents.cid IS NULL', 'publish')
-            ->where('table.contents.password IS NULL OR table.contents.password = ? OR table.contents.cid IS NULL', '')
-            ->where('table.contents.created <= ? OR table.contents.cid IS NULL', time())
-            ->group('table.metas.mid')
-            ->order('table.metas.mid', \Typecho\Db::SORT_DESC)
-    );
-    foreach ($rows as $row) {
-        $slug = trim(lt_text($row['slug'] ?? ''));
-        $name = trim(lt_text($row['name'] ?? ''));
-        $tagCloud[] = [
-            'name' => $name,
-            'slug' => $slug,
-            'count' => max(0, (int) ($row['cnt'] ?? 0)),
-            'url' => ($name !== '' && $slug !== '')
-                ? \Typecho\Router::url('tag', ['slug' => $slug], $this->options->index)
-                : ''
-        ];
-    }
+    // L3：标签云页三表 LEFT JOIN 结果缓存 3600s，避免每次访问全表聚合
+    $tagCloud = lt_cache_remember('tagcloud', 'page', 3600, function () {
+        $db = \Typecho\Db::get();
+        $rows = $db->fetchAll(
+            $db->select('table.metas.mid', 'table.metas.name', 'table.metas.slug', 'COUNT(table.relationships.cid) AS cnt')
+                ->from('table.metas')
+                ->join('table.relationships', 'table.metas.mid = table.relationships.mid', \Typecho\Db::LEFT_JOIN)
+                ->join('table.contents', 'table.relationships.cid = table.contents.cid', \Typecho\Db::LEFT_JOIN)
+                ->where('table.metas.type = ?', 'tag')
+                ->where('table.contents.status = ? OR table.contents.cid IS NULL', 'publish')
+                ->where('table.contents.password IS NULL OR table.contents.password = ? OR table.contents.cid IS NULL', '')
+                ->where('table.contents.created <= ? OR table.contents.cid IS NULL', time())
+                ->group('table.metas.mid')
+                ->order('table.metas.mid', \Typecho\Db::SORT_DESC)
+        );
+        $result = [];
+        foreach ($rows as $row) {
+            $slug = trim(lt_text($row['slug'] ?? ''));
+            $name = trim(lt_text($row['name'] ?? ''));
+            $result[] = [
+                'name' => $name,
+                'slug' => $slug,
+                'count' => max(0, (int) ($row['cnt'] ?? 0)),
+                'url' => ($name !== '' && $slug !== '')
+                    ? \Typecho\Router::url('tag', ['slug' => $slug], $this->options->index)
+                    : ''
+            ];
+        }
+        return $result;
+    });
 } catch (\Throwable $e) {
     $tagCloud = [];
 }

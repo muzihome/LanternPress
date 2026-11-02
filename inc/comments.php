@@ -40,7 +40,9 @@ function threadedComments(object $comments, object $options): void
                             <em><?php _e('（审核后可见）'); ?></em>
 <?php endif; ?>
                         <time class="comment-time"><?php $comments->date('M j, Y'); ?></time>
-                        <span class="comment-reply"><?php $comments->reply(_t('回复')); ?></span>
+                        <span class="comment-reply">
+                            <a href="javascript:void(0);" class="comment-reply-link" data-cid="<?php $comments->theId(); ?>" data-coid="<?php echo (int) $comments->coid; ?>" data-no-instant><?php _e('回复'); ?></a>
+                        </span>
                     </div>
                     <div class="comment-content">
 <?php echo getReply((int) $comments->parent, lt_text($comments->content)) . "\n"; ?>
@@ -59,6 +61,8 @@ function threadedComments(object $comments, object $options): void
 <div class="comment-container">
     <div id="comments" class="clearfix">
 <?php $this->comments()->to($comments); ?>
+<?php // 方案1·N+1 消除：构建父作者映射供 getReply 复用（一次性查询），置于全局供渲染消费 ?>
+<?php $GLOBALS['lt_comment_parent_map'] = lt_comment_parent_map((int) $this->cid); ?>
 <?php if ($this->allow('comment')): ?>
             <div id="<?php $this->respondId(); ?>" class="respond" data-respondId="<?php $this->respondId() ?>">
                 <h2 class="response">
@@ -71,7 +75,7 @@ function threadedComments(object $comments, object $options): void
                             ); echo "\n"; ?>
                             <a href="<?php $this->options->logoutUrl(); ?>" title="<?php echo lt_esc_attr(_t('退出登录')); ?>" data-no-instant><?php _e('退出登录'); ?></a>
 <?php endif; ?>
-<?php $comments->cancelReply(_t(' 取消回复')); echo "\n"; ?>
+                        <a id="cancel-comment-reply-link" class="cancel-comment-reply-link" href="javascript:void(0);" data-no-instant style="display:none;"><?php _e(' 取消回复'); ?></a><?php echo "\n"; ?>
                     </span>
                 </h2>
                 <form method="post" action="<?php $this->commentUrl() ?>" id="comment-form" class="comment-form" role="form">
@@ -92,24 +96,38 @@ function threadedComments(object $comments, object $options): void
             <span class="response"><?php _e('评论已关闭'); ?></span>
 <?php endif; ?>
 
-<?php if ($comments->have()): ?>
-<?php $comments->listComments(); echo "\n"; ?>
-            <div class="comment-list-tail-spacer"></div>
-<?php $comments->pageNav(
-                lt_icon('left'),
-                lt_icon('right'),
-                1,
-                '...',
-                [
-                    'wrapTag' => 'ul',
-                    'wrapClass' => 'pagination-container',
-                    'itemTag' => 'li',
-                    'textTag' => 'a',
-                    'currentClass' => 'active',
-                    'prevClass' => 'prev',
-                    'nextClass' => 'next'
-                ]
-            ); echo "\n"; ?>
+<?php // 方案1·评论区缓存化：按 cid + 评论版本号 + 分页缓存渲染后的列表（含分页），消除重复清洗与 N+1；
+            // 版本号由提交/审核/删除钩子 bump（hooks.php），旧 ver 缓存自然 miss；表单含每请求 CSRF token 不入缓存
+            $ltCommentPage = (int) \Typecho\Request::getInstance()->get('commentPage', 0);
+            $ltCommentKey = 'list-' . (int) $this->cid . '-' . lt_comment_list_ver((int) $this->cid) . '-p' . $ltCommentPage;
+            $ltCommentList = lt_cache_remember('comment', $ltCommentKey, 300, static function () use ($comments): string {
+                if (!$comments->have()) {
+                    return '';
+                }
+                ob_start();
+                $comments->listComments();
+                echo "\n";
+                echo '<div class="comment-list-tail-spacer"></div>';
+                $comments->pageNav(
+                    lt_icon('left'),
+                    lt_icon('right'),
+                    1,
+                    '...',
+                    [
+                        'wrapTag' => 'ul',
+                        'wrapClass' => 'pagination-container',
+                        'itemTag' => 'li',
+                        'textTag' => 'a',
+                        'currentClass' => 'active',
+                        'prevClass' => 'prev',
+                        'nextClass' => 'next'
+                    ]
+                );
+                echo "\n";
+                return (string) ob_get_clean();
+            });
+            if ($ltCommentList !== ''): ?>
+<?php echo $ltCommentList; ?>
 <?php endif; ?>
     </div>
 </div>

@@ -10,8 +10,15 @@ if (!defined('__TYPECHO_ROOT_DIR__')) exit;
 
 // script-src 由 lt_build_csp_policy() 动态注入 nonce，此处仅保留除 script-src 外的其余指令
 // （script-src 每次请求变化，不能用 define 硬编码）
-// style-src 同样用 nonce（批次27），style-attr 'unsafe-inline' 单独放行 style="..." 属性（CSP Level 3）
-define('LT_CSP_BASE', "default-src 'self'; style-src 'self' 'STYLE_NONCE_PLACEHOLDER' https:; style-attr 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https:; media-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'");
+// style-src 同样用 nonce（批次27），style-src-attr 'unsafe-inline' 单独放行 style="..." 属性（CSP Level 3 正确指令名）
+define('LT_CSP_BASE', "default-src 'self'; style-src 'self' 'STYLE_NONCE_PLACEHOLDER' https:; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https:; media-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'");
+
+// 广告/统计第三方脚本域白名单：默认空=仅 self+nonce。启用广告位脚本时在此追加域名
+// （如 'https://pagead2.googlesyndication.com https://*.googlesyndication.com'），
+// 勿用 'https:' 全放行（会绕过 nonce 保护）。可在 config.inc.php 或主题配置中覆盖。
+if (!defined('LT_CSP_SCRIPT_SRC_EXTRA')) {
+    define('LT_CSP_SCRIPT_SRC_EXTRA', '');
+}
 
 // CSP nonce（批次26）：per-request 随机值，所有 <script nonce="xxx"> 需匹配才放行。
 // 去掉 script-src 'unsafe-inline' 的前提——主题硬编码的 inline JS 已移至 lantern.core.js，
@@ -69,7 +76,10 @@ function lt_build_csp_policy(): string
 {
     $nonce = lt_generate_csp_nonce();
     $base = str_replace("'STYLE_NONCE_PLACEHOLDER'", "'nonce-{$nonce}'", LT_CSP_BASE);
-    return "script-src 'self' 'nonce-{$nonce}'; " . $base;
+    // 追加广告/统计第三方脚本域白名单（默认空；LT_CSP_SCRIPT_SRC_EXTRA 可配置）
+    $scriptExtra = defined('LT_CSP_SCRIPT_SRC_EXTRA') && is_string(LT_CSP_SCRIPT_SRC_EXTRA)
+        ? ' ' . trim(LT_CSP_SCRIPT_SRC_EXTRA) : '';
+    return "script-src 'self' 'nonce-{$nonce}'{$scriptExtra}; " . $base;
 }
 
 // 给 HTML 片段内所有 <style> 标签加 nonce="xxx"（批次27，与 lt_add_nonce_to_scripts 对称）

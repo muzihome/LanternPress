@@ -12,5 +12,7 @@ lt_send_security_headers();
 require_once __DIR__ . '/inc/admin-theme-config.php';
 // 发布钩子（缓存/字段清理）与点赞 Ajax 接口
 require_once __DIR__ . '/inc/hooks.php';
+// EdgeOne CDN 缓存自动刷新（前台兜底 + 后台测试清除）
+require_once __DIR__ . '/inc/edgeone-cache.php';
 // 后台「设置外观」TAB 分组 + 导航菜单构建器注入
 require_once __DIR__ . '/inc/admin-panel.php';

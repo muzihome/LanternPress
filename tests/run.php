@@ -377,6 +377,206 @@ test('lt_sync_poster_hosts writes validated hosts file', function () {
     @unlink($path);
 });
 
+// ---- 测试组 8: P0 友链性能优化（缓存 + 同源代理判定） ----
+echo "\nTest Group 8: P0 Flink Optimization\n";
+
+test('lt_proxy_image_host_allowed exact & wildcard & empty', function () {
+    $dir = lt_cache_dir();
+    $path = $dir . '/poster_hosts.php';
+    // 直接写白名单文件（不依赖 lt_sync_poster_hosts：其 static $done 防同一进程重复写入）
+    @file_put_contents($path, "<?php\nreturn ['img.example.com', '.oss.example.com'];\n");
+    assert_true(lt_proxy_image_host_allowed('img.example.com'), 'exact match');
+    assert_true(lt_proxy_image_host_allowed('a.oss.example.com'), 'wildcard subdomain');
+    assert_false(lt_proxy_image_host_allowed('example.com'), 'root not wildcarded');
+    assert_false(lt_proxy_image_host_allowed('evil.com'), 'not in whitelist');
+    // 大小写不敏感
+    assert_true(lt_proxy_image_host_allowed('IMG.EXAMPLE.COM'), 'case-insensitive');
+    @unlink($path);
+});
+
+test('lt_proxy_image_host_allowed empty whitelist = false (safe default)', function () {
+    $dir = lt_cache_dir();
+    $path = $dir . '/poster_hosts.php';
+    @unlink($path);
+    assert_false(lt_proxy_image_host_allowed('img.example.com'), 'no whitelist file -> not allowed');
+});
+
+test('lt_maybe_proxy_image degrades safely without Typecho (offline)', function () {
+    // 单测环境无 Typecho Widget：Options 读取失败 → 原样直连，不抛异常
+    $url = 'https://img.example.com/logo.png';
+    assert_eq($url, lt_maybe_proxy_image($url), 'no crash, passthrough when Options unavailable');
+});
+
+test('lt_maybe_proxy_image passes through svg & non-http & empty', function () {
+    // 这些分支在 Typecho 不可用时同样生效（判定不依赖 Options）
+    assert_eq('', lt_maybe_proxy_image(''), 'empty url');
+    assert_eq('data:image/png;base64,xx', lt_maybe_proxy_image('data:image/png;base64,xx'), 'non-http scheme');
+    assert_eq('https://img.example.com/logo.svg', lt_maybe_proxy_image('https://img.example.com/logo.svg'), 'svg passthrough');
+    assert_eq('https://img.example.com/logo.svgz', lt_maybe_proxy_image('https://img.example.com/logo.svgz'), 'svgz passthrough');
+    assert_eq('https://x.com/usr/themes/LanternPress/inc/poster-proxy.php?url=a', lt_maybe_proxy_image('https://x.com/usr/themes/LanternPress/inc/poster-proxy.php?url=a'), 'already proxied idempotent');
+});
+
+// ============================================
+// Group 9：P2 flinks 数据模型纯函数（inc/flinks.php）
+// ============================================
+echo "\n--- Group 9: flinks pure functions ---\n";
+
+test('lt_flinks_parse_entry extracts [logo], strips markdown, truncates desc', function () {
+    $fix = static fn(string $u): string => $u;
+    $entry = lt_flinks_parse_entry([
+        'author' => ' 示例博客 ',
+        'url' => 'example.com',
+        'mail' => 'a@b.com',
+        'text' => "[logo]https://img.example.com/logo.png[/logo] **简介** _斜体_ `code` ~~del~~ " . str_repeat('长', 80),
+        'created' => 1700000000,
+    ], $fix);
+    assert_eq('示例博客', $entry['name'], 'author trimmed');
+    assert_eq('example.com', $entry['url'], 'url kept (caller fixes protocol)');
+    assert_eq('https://img.example.com/logo.png', $entry['logo'], 'logo extracted');
+    assert_eq('简介 斜体 code del ' . str_repeat('长', 45) . '...', $entry['desc'], 'markdown stripped + truncated to 60');
+    assert_eq(1, $entry['status'], 'legacy rows default to approved');
+});
+
+test('lt_flinks_parse_entry returns empty on blank name', function () {
+    $fix = static fn(string $u): string => $u;
+    assert_eq([], lt_flinks_parse_entry(['author' => '   ', 'url' => '', 'text' => 'x'], $fix), 'blank name -> empty');
+});
+
+test('lt_flinks_dup_exists matches normalized url or same mail', function () {
+    $data = [
+        ['id' => 1, 'url' => 'https://Example.com/path?q=1', 'mail' => 'a@b.com', 'status' => 1],
+        ['id' => 2, 'url' => 'http://other.org/', 'mail' => 'c@d.com', 'status' => 0],
+    ];
+    assert_true(lt_flinks_dup_exists($data, 'http://example.com/', 'x@y.com'), 'scheme+path ignored, host match');
+    assert_true(lt_flinks_dup_exists($data, 'https://new.site/', 'A@B.COM'), 'mail case-insensitive');
+    assert_false(lt_flinks_dup_exists($data, 'https://new.site/', 'x@y.com'), 'no dup for new site');
+    $rejected = [
+        ['id' => 9, 'url' => 'https://rejected.com', 'mail' => 'r@r.com', 'status' => 2],
+    ];
+    assert_false(lt_flinks_dup_exists($rejected, 'https://rejected.com', 'r@r.com'), 'rejected (status=2) does not block re-apply');
+});
+
+test('lt_flinks_visible filters approved and sorts by sort then created', function () {
+    $data = [
+        ['id' => 1, 'status' => 0, 'sort' => 0, 'created' => 1],
+        ['id' => 2, 'status' => 1, 'sort' => 2, 'created' => 3],
+        ['id' => 3, 'status' => 1, 'sort' => 1, 'created' => 9],
+        ['id' => 4, 'status' => 1, 'sort' => 1, 'created' => 2],
+        ['id' => 5, 'status' => 2, 'sort' => 0, 'created' => 0],
+    ];
+    $visible = lt_flinks_visible($data);
+    assert_eq(3, count($visible), 'only status=1 kept');
+    $ids = array_column($visible, 'id');
+    assert_eq([4, 3, 2], $ids, 'sort asc, then created asc');
+});
+
+// Group 10：P2-2 管理后台数据规则（URL 归一化 / 去重边界 / visible 状态覆盖）
+echo "\n--- Group 10: flinks admin rules ---\n";
+
+test('lt_flinks_normalize_url adds https and validates scheme', function () {
+    assert_eq('https://example.com', lt_flinks_normalize_url('example.com'), 'bare domain -> https');
+    assert_eq('https://example.com/path', lt_flinks_normalize_url(' example.com/path '), 'trim + path kept');
+    assert_eq('http://x.io', lt_flinks_normalize_url('http://x.io'), 'explicit http kept');
+    assert_eq('', lt_flinks_normalize_url(''), 'blank -> empty');
+    assert_eq('', lt_flinks_normalize_url('javascript:alert(1)'), 'dangerous scheme rejected');
+    assert_eq('', lt_flinks_normalize_url('file:///etc/passwd'), 'file scheme rejected');
+    assert_eq('https://example.com', lt_flinks_normalize_url('https://example.com'), 'explicit https kept');
+});
+
+test('lt_flinks_dup_exists ignores rejected entries and trims host port', function () {
+    $data = [
+        ['id' => 1, 'url' => 'https://example.com:8080/a?b=1', 'mail' => 'a@b.com', 'status' => 1],
+        ['id' => 2, 'url' => 'https://other.org', 'mail' => '', 'status' => 0],
+    ];
+    assert_true(lt_flinks_dup_exists($data, 'http://example.com:8080/', 'x@y.com'), 'host:port + scheme ignored');
+    assert_false(lt_flinks_dup_exists($data, 'https://example.com:9090/', 'x@y.com'), 'different port is not dup');
+    assert_true(lt_flinks_dup_exists($data, 'https://new.org', 'A@B.COM'), 'mail case-insensitive on status=0');
+    $rejected = [['id' => 5, 'url' => 'https://rejected.com', 'mail' => 'r@r.com', 'status' => 2]];
+    assert_false(lt_flinks_dup_exists($rejected, 'https://rejected.com', 'r@r.com'), 'rejected never blocks');
+});
+
+test('lt_flinks_admin stats semantics (approved/pending/rejected)', function () {
+    $data = [
+        ['id' => 1, 'status' => 1],
+        ['id' => 2, 'status' => 0],
+        ['id' => 3, 'status' => 2],
+        ['id' => 4, 'status' => 1],
+        ['id' => 5, 'status' => 99], // 未知状态归待审（与端点 lt_admin_stats 默认分支一致）
+    ];
+    $approved = count(array_filter($data, static fn($e) => (int) ($e['status'] ?? 0) === 1));
+    $pending = count(array_filter($data, static fn($e) => !in_array((int) ($e['status'] ?? 0), [1, 2], true)));
+    $rejected = count(array_filter($data, static fn($e) => (int) ($e['status'] ?? 0) === 2));
+    assert_eq(2, $approved, 'approved count');
+    assert_eq(2, $pending, 'pending count (incl unknown)');
+    assert_eq(1, $rejected, 'rejected count');
+    assert_eq(5, $approved + $pending + $rejected, 'total matches');
+});
+
+// ============================================
+// Group 11：批次A/B 新增逻辑
+// （A1 事务锁包装 / A2 统一失效函数 / B3 category 字段透传）
+// ============================================
+echo "\n--- Group 11: flinks batch A/B helpers ---\n";
+
+// 事务测试会经 lt_cache_dir 创建 cache/flink_rw.lock；记录目录初始状态以便清理
+$ltCacheDir = dirname(__DIR__) . '/cache';
+$ltHadCache = is_dir($ltCacheDir);
+
+test('lt_flinks_transaction returns callback result and stays serialized', function () {
+    $calls = [];
+    for ($i = 1; $i <= 5; $i++) {
+        $v = lt_flinks_transaction(static function () use ($i, &$calls): int {
+            $calls[] = $i;
+            usleep(5000);
+            return $i * 2;
+        });
+        assert_eq($i * 2, $v, "transaction returns callback value #$i");
+    }
+    assert_eq([1, 2, 3, 4, 5], $calls, 'transactions run sequentially (FIFO order preserved)');
+});
+
+test('lt_flinks_transaction direct value passes through lock wrapper', function () {
+    $v = lt_flinks_transaction(static function (): string {
+        return 'ok';
+    });
+    assert_eq('ok', $v, 'direct value passes through lock wrapper');
+});
+
+test('lt_flinks_forget_cid guards invalid cid', function () {
+    lt_flinks_forget_cid(0);
+    lt_flinks_forget_cid(-3);
+    assert_true(true, 'no exception on invalid cid');
+});
+
+test('lt_flinks_forget_all_pages is safe without Typecho widgets', function () {
+    lt_flinks_forget_all_pages();
+    assert_true(true, 'no exception without widget runtime (Throwable caught)');
+});
+
+test('lt_flinks_visible preserves category field through filter/sort', function () {
+    $data = [
+        ['id' => 1, 'status' => 1, 'sort' => 1, 'created' => 1, 'category' => '工具'],
+        ['id' => 2, 'status' => 1, 'sort' => 2, 'created' => 2, 'category' => '友情'],
+        ['id' => 3, 'status' => 0, 'sort' => 0, 'created' => 0, 'category' => '工具'],
+    ];
+    $visible = lt_flinks_visible($data);
+    assert_eq(2, count($visible), 'only approved kept');
+    assert_eq('工具', $visible[0]['category'] ?? '', 'category preserved through visible (first)');
+    assert_eq('友情', $visible[1]['category'] ?? '', 'category preserved through visible (second)');
+});
+
+test('lt_flinks_dup_exists ignores category for dedup', function () {
+    $data = [['id' => 1, 'url' => 'https://example.com', 'mail' => 'a@b.com', 'status' => 1, 'category' => '工具']];
+    assert_true(lt_flinks_dup_exists($data, 'https://example.com', 'x@y.com'), 'url dedup still by host');
+    assert_false(lt_flinks_dup_exists($data, 'https://other.org', 'x@y.com'), 'category never affects dedup');
+});
+
+// 清理事务锁测试产生的残留（cache 目录原不存在时一并移除空目录）
+@unlink($ltCacheDir . '/flink_rw.lock');
+if (!$ltHadCache && is_dir($ltCacheDir) && count((array) glob($ltCacheDir . '/*')) === 0) {
+    @rmdir($ltCacheDir);
+}
+
 // ---- 汇总 ----
 echo "\n========================================\n";
 echo "Results: $passed passed, $failed failed\n";

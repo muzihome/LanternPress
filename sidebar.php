@@ -116,7 +116,7 @@ try {
 <?php if ($sidebarAdCode !== '' && in_array('ad', $sidebarActiveModules, true)): ?>
 <div class="sidebar-widget widget-ad">
     <h3 class="widget-title"><?php _e('推荐'); ?></h3>
-    <div class="sidebar-ad-content"><?php echo $sidebarAdCode; ?></div>
+    <div class="sidebar-ad-content"><?php echo lt_add_nonce_to_scripts($sidebarAdCode, lt_generate_csp_nonce()); ?></div>
 </div>
 <?php endif; ?>
 
@@ -228,6 +228,11 @@ if (is_object($sidebarComments) && $sidebarComments->have()): ?>
     <ul class="widget-comment-list">
 <?php while ($sidebarComments->next()): ?>
 <?php
+            // P2 兜底：友链申请影子评论（占位 text 以 [flink-apply] 开头）删除失败时，
+            // 跳过该条，防止污染「最新评论」模块（正常路径下 finishComment 钩子已零残留删除）
+            if (str_starts_with((string) $sidebarComments->text, '[flink-apply]')) {
+                continue;
+            }
             // 防御：评论所属文章不可用时（如导入无评论段备份后旧评论残留、cid 错配），
             // parentContent 为空 Contents，permalink 生成会抛 Router::url(null) TypeError，
             // 这里跳过该条而非让整个页面 500（Typecho 1.3.0 导入机制不清空备份外表的已知缺口）
@@ -308,7 +313,7 @@ if (!empty($sidebarTagRows)): ?>
             $db = \Typecho\Db::get();
             $sidebarStatObj = $db->fetchObject($db->select(['COUNT(cid)' => 'num'])->from('table.contents')->where('type = ? AND status = ?', 'post', 'publish'));
             $stats['posts'] = $sidebarStatObj ? (int) $sidebarStatObj->num : 0;
-            $sidebarStatObj = $db->fetchObject($db->select(['COUNT(cid)' => 'num'])->from('table.comments')->where('status = ?', 'approved'));
+            $sidebarStatObj = $db->fetchObject($db->select(['COUNT(cid)' => 'num'])->from('table.comments')->where('status = ? AND text NOT LIKE ?', 'approved', '[flink-apply]%'));
             $stats['comments'] = $sidebarStatObj ? (int) $sidebarStatObj->num : 0;
             $sidebarStatObj = $db->fetchObject($db->select(['COUNT(mid)' => 'num'])->from('table.metas')->where('type = ?', 'category'));
             $stats['categories'] = $sidebarStatObj ? (int) $sidebarStatObj->num : 0;

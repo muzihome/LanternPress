@@ -68,6 +68,7 @@ constructor() {
     this.initSearchModal();
     this.initArticleLinks();
     this.initFlinksApply();
+    this.initFlinkIconFallback();
     this.initNavbar();
     this.initRecommendSlider();
     if (!window.LANTERTOWN_CONFIG) {
@@ -607,6 +608,24 @@ ta.value = '[logo]' + v + '[/logo]\n' + ta.value;
 }
 }
 });
+}
+initFlinkIconFallback() {
+// C1（批次A）：友链 LOGO / 邮箱头像加载失败兜底——事件委托（捕获阶段）把 <img.flink-icon-img>
+// 替换为首字圆形徽标。不引入内联 onerror（CSP nonce 体系下内联事件属性不执行）。
+// data-name 由 flinks-template.php 在渲染卡片时输出（首字）。
+document.addEventListener('error', function (e) {
+const target = e.target;
+if (!target || target.tagName !== 'IMG' || !target.classList.contains('flink-icon-img')) {
+return;
+}
+const name = (target.getAttribute('data-name') || '').trim();
+const span = document.createElement('span');
+span.className = 'flink-icon';
+span.textContent = name.charAt(0) || '•';
+if (target.parentNode) {
+target.parentNode.replaceChild(span, target);
+}
+}, true);
 }
 }
 
