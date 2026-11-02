@@ -570,6 +570,7 @@ test('lt_flinks_forget_cid guards invalid cid', function () {
 });
 
 test('lt_flinks_forget_all_pages is safe without Typecho widgets', function () {
+<<<<<<< HEAD
     // 该用例预期触发一条 error_log（无 Typecho Widget 环境，lt_log_error 记录后安全返回）；
     // 临时重定向到临时文件，避免污染测试输出（#6）
     $ltPrevLog = (string) ini_get('error_log');
@@ -585,6 +586,9 @@ test('lt_flinks_forget_all_pages is safe without Typecho widgets', function () {
             @unlink($ltTmpLog);
         }
     }
+=======
+    lt_flinks_forget_all_pages();
+>>>>>>> 97178c14ccc67c567d420679089aa1493ffabce0
     assert_true(true, 'no exception without widget runtime (Throwable caught)');
 });
 
@@ -612,6 +616,7 @@ if (!$ltHadCache && is_dir($ltCacheDir) && count((array) glob($ltCacheDir . '/*'
     @rmdir($ltCacheDir);
 }
 
+<<<<<<< HEAD
 // ============================================
 // Group 12：poster-proxy SSRF 防护纯函数（#7）
 // ============================================
@@ -780,6 +785,8 @@ test('lt_safe_comment_html removes dangerous tags with attributes and keeps safe
     assert_true(str_contains($r, '<p>ok</p>'), 'safe content kept');
 });
 
+=======
+>>>>>>> 97178c14ccc67c567d420679089aa1493ffabce0
 // ---- 汇总 ----
 echo "\n========================================\n";
 echo "Results: $passed passed, $failed failed\n";

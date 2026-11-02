@@ -137,6 +137,7 @@ function lt_cache_remember(string $group, string $key, int $ttl, callable $load)
             }
         }
     }
+<<<<<<< HEAD
     // 未抢到锁（并发进程正在重建同一键）→ 回退读旧缓存（允许已过期的陈旧数据），
     // 避免雪崩式并发重建与重复回源；仅冷启动（无任何旧缓存）才自行计算
     if (!$locked) {
@@ -153,6 +154,8 @@ function lt_cache_remember(string $group, string $key, int $ttl, callable $load)
             }
         }
     }
+=======
+>>>>>>> 97178c14ccc67c567d420679089aa1493ffabce0
     $data = $load();
     // 放宽为 array|string：友链页 page 段返回整页 HTML 字符串，同样允许缓存（P3 修复）；
     // 上限提到 512KB，避免长友链页 HTML 超 60KB 默认限静默失去缓存
