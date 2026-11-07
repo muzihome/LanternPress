@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="LanternPress">
+  <rect width="64" height="64" rx="12" fill="#f9f7f1"/>
+  <rect x="24" y="9" width="16" height="5" rx="1.5" fill="#b08d2f"/>
+  <ellipse cx="32" cy="30" rx="17" ry="19" fill="#cc493d"/>
+  <path d="M26 13c-2.4 9-2.4 25 0 34M38 13c2.4 9 2.4 25 0 34" fill="none" stroke="#a63a30" stroke-width="1.6"/>
+  <line x1="32" y1="13" x2="32" y2="47" stroke="#a63a30" stroke-width="1.4"/>
+  <rect x="24" y="46" width="16" height="5" rx="1.5" fill="#b08d2f"/>
+  <line x1="32" y1="51" x2="32" y2="58" stroke="#b08d2f" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="32" cy="59" r="1.6" fill="#b08d2f"/>
+</svg>
