@@ -187,8 +187,6 @@ LanternPress/
 ```
 
 > `cache/` 为运行时目录，升级主题时可直接覆盖其余文件，无需保留旧缓存。
->
-> **二次开发提示**：Git 仓库里另附**未压缩的源 `assets` 目录**（`src/assets/`：`css/`、`js/`、`img/`、`fonts/`、`vendor/`）。改样式/脚本请改这一份，部署形态的 `assets/css/*.min.css` 由构建压缩生成，两者内容等价。
 
 ---
 
