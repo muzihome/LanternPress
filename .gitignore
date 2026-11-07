@@ -1,24 +1,32 @@
 # ============================================================
-# LanternPress 公开发行版（GitHub）忽略规则
-# 日常开发在 Gitee 私库，本仓库只发布干净发行源码
-# 公库日志：带 LOG.md（概要版）；CHANGELOG.md（详细版）不公开发行
+# LanternPress Typecho 主题 - Git 忽略规则
+# 仓库结构: src/ 源码 · dist/ 构建产物 · docs/ 文档 · .build/ 构建脚本 · tests/ 回归测试
 # ============================================================
 
-# --- 开发/内部目录（私库专属）---
-.build/
+# --- 构建产物（deploy-sync 由 src/ 生成，可随时复现）---
+dist/
+
+# --- 构建与工作目录 ---
 .trae/
 .idea/
 .vscode/
-cache/
+*.swp
+*.swo
 
-# --- 详细版日志（公库只带 LOG.md 概要版）---
-CHANGELOG.md
+# --- 运行时缓存（Typecho 自动生成 + 主题文件缓存）---
+# 开发态缓存统一落在仓库根 cache/；主题随包的 cache/.htaccess 由 .build/cache.htaccess 构建生成
+#   content/{cid}.php    正文处理结果（按文章 ID 命名）
+#   rate_limit_*.php     点赞/视图限流计数
+#   archive-cache.php    归档页查询缓存
+#   sidebar-cache.php    侧边栏热门/站点信息缓存
+cache/*
+!cache/.htaccess
+# 兜底：任何工具误在源码目录生成运行时缓存时也不入库
+src/cache/
 
-# --- 压缩产物（源码只保留格式化版；发布流程按需生成）---
-assets/css/*.min.css
-assets/css/*.min.css.map
-assets/js/*.min.js
-assets/js/*.min.js.map
+# --- 开发态日志与截图存档（不进版本控制）---
+log/*
+.screenshots/*
 
 # --- 操作系统垃圾文件 ---
 .DS_Store
@@ -30,3 +38,6 @@ desktop.ini
 *.tmp
 *.bak
 *~
+
+# --- 批次文档/截图（误提交防护）---
+batch-*/

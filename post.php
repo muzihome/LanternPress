@@ -50,7 +50,6 @@ $showWriterIntro = lt_bool($this->options->writerIntro ?? false);
 $showCopyright = lt_bool($this->options->showCopyright ?? false);
 $selfIntro = trim(lt_text($this->options->selfIntro ?? ''));
 $authorName = lt_text($this->author->name ?? $this->author->screenName ?? '');
-$authorMail = lt_text($this->author->mail ?? '');
 $cid = (int) ($this->cid ?? 0);
 
 $postLayout = lt_text($this->options->postLayout ?? 'right');
@@ -59,7 +58,7 @@ if (!in_array($postLayout, ['right', 'left', 'none'], true)) {
 }
 $layoutClass = $postLayout === 'none' ? 'no-sidebar' : 'sidebar-' . $postLayout;
 $commentsNum = (int) ($this->commentsNum ?? 0);
-$postAdSlot = trim(lt_text($this->options->postAdSlot ?? ''));
+$postAdSlot = trim(lt_safe_ad_html(lt_text($this->options->postAdSlot ?? '')));
 
 if ($isPost && $cid > 0 && !$this->hidden) {
     lt_increment_views($cid);
@@ -75,74 +74,27 @@ $readingMinutes = 1;
 $wordCount = 0;
 $_postPlainText = '';
 
-// ===== 字数 / 阅读时长前置计算（必须在 post-meta 输出之前完成，否则显示恒为初始 1/0）=====
+
 $ltCid = (int) $this->cid;
 $ltConfigHash = lt_get_config_hash();
-$ltCachedRaw = ($ltCid > 0 && $isPost && !$this->hidden) ? lt_content_cache_get($ltCid) : null;
 $ltCacheHit = false;
 $ltCachedContent = '';
-$ltCachedChars = null;
-$ltCachedSummary = '';
-if ($ltCachedRaw !== null && $ltCachedRaw !== '' && strpos($ltCachedRaw, '||') !== false) {
-    // 缓存格式：hash||chars||summary||content（旧格式 hash||content 自动降级补算）
-    $ltCacheParts = explode('||', $ltCachedRaw, 4);
-    $ltCachedHash = $ltCacheParts[0];
-    if (count($ltCacheParts) === 4) {
-        $ltCachedChars = (int) $ltCacheParts[1];
-        $ltCachedSummary = $ltCacheParts[2];
-        $ltCachedContent = $ltCacheParts[3];
-    } else {
-        $ltCachedContent = $ltCacheParts[1];
-    }
-    if (stripos($ltCachedContent, '此内容被密码保护') === 0) {
-        lt_content_cache_delete($ltCid);
-        lt_delete_field($ltCid, 'ltProcessedContent');
-        $ltCachedRaw = null;
-    } elseif ($ltCachedHash === $ltConfigHash) {
+if ($ltCid > 0 && $isPost && !$this->hidden) {
+    $ltCached = lt_content_cache_load($ltCid, $ltConfigHash);
+    if ($ltCached !== null) {
         $ltCacheHit = true;
-        if ($ltCachedChars !== null && $ltCachedChars > 0) {
-            $wordCount = $ltCachedChars;
-            $readingMinutes = max(1, (int) ceil($ltCachedChars / 400));
-            $_postPlainText = $ltCachedSummary;
-        } else {
-            // 旧格式缓存（hash||content 两段，chars 缺失）或 chars=0：
-            // 用缓存正文补算字数并升级缓存为四段，避免显示「全文 0 字」
-            $ltCachedText = html_entity_decode(strip_tags((string) $ltCachedContent), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-            $ltTmpText = preg_replace('/[\s\x{00A0}]+/u', ' ', $ltCachedText);
-            if ($ltTmpText === null) {
-                $ltTmpText = str_replace(["\r\n", "\r", "\n", "\t"], ' ', $ltCachedText);
-                $ltTmpText = str_replace("\xC2\xA0", ' ', $ltTmpText);
-            }
-            $ltCachedText = trim($ltTmpText);
-            $wordCount = mb_strlen($ltCachedText, 'UTF-8');
-            if ($wordCount === 0 && trim((string) strip_tags((string) $ltCachedContent)) !== '') {
-                $ltCachedText = trim((string) strip_tags((string) $ltCachedContent));
-                $wordCount = mb_strlen($ltCachedText, 'UTF-8');
-            }
-            $readingMinutes = max(1, (int) ceil($wordCount / 400));
-            $_postPlainText = $ltCachedText;
-            lt_content_cache_set($ltCid, $ltConfigHash . '||' . $wordCount . '||' . \Typecho\Common::subStr($ltCachedText, 0, 100, '...') . '||' . $ltCachedContent);
-        }
+        $ltCachedContent = $ltCached['content'];
+        $wordCount = $ltCached['chars'];
+        $readingMinutes = max(1, (int) ceil($ltCached['chars'] / 400));
+        $_postPlainText = $ltCached['summary'];
     }
 }
 if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
-    // 未命中：直接以渲染后正文计算字数（content 属性经 Typecho ___content() 缓存，正文输出不重复渲染）
-    $_rawPlain = html_entity_decode(strip_tags(lt_text($this->content ?? '')), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-    $_tmpPlain = preg_replace('/[\s\x{00A0}]+/u', ' ', $_rawPlain);
-    if ($_tmpPlain === null) {
-        // /u 正则遇非法 UTF-8 会返回 null，回退为字符级空白替换
-        $_tmpPlain = str_replace(["\r\n", "\r", "\n", "\t"], ' ', $_rawPlain);
-        $_tmpPlain = str_replace("\xC2\xA0", ' ', $_tmpPlain);
-    }
-    $_postPlainText = trim($_tmpPlain);
-    $_charCount = mb_strlen($_postPlainText, 'UTF-8');
-    if ($_charCount === 0 && trim((string) strip_tags(lt_text($this->content ?? ''))) !== '') {
-        // 兜底：正文非空而计数为 0 时，退回基础去标签计数，避免显示「全文 0 字」
-        $_postPlainText = trim((string) strip_tags(lt_text($this->content ?? '')));
-        $_charCount = mb_strlen($_postPlainText, 'UTF-8');
-    }
-    $wordCount = $_charCount;
-    $readingMinutes = max(1, (int) ceil($_charCount / 400));
+    
+    $ltStats = lt_content_plain_stats(lt_text($this->content ?? ''));
+    $_postPlainText = $ltStats['text'];
+    $wordCount = $ltStats['chars'];
+    $readingMinutes = $ltStats['minutes'];
 }
 ?>
 <?php $this->need('header.php'); ?>
@@ -157,19 +109,20 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
                     <i class="lt-icon icon-home breadcrumb-icon" aria-hidden="true"></i><?php _e('首页'); ?>
                 </a>
 <?php
-                // 面包屑分类：无分类（独立页面/未分类文章）时不输出中间段，避免「首页 -> -> 标题」
+                
+                
+                
                 $breadCatHtml = '';
                 if (is_array($this->categories ?? null) && !empty($this->categories)) {
-                    $breadCatLinks = [];
-                    foreach (array_slice($this->categories, 0, 2) as $breadCatRow) {
-                        $breadCatUrl = lt_safe_url((string) ($breadCatRow['permalink'] ?? ''));
-                        $breadCatName = trim(lt_text($breadCatRow['name'] ?? ''));
-                        if ($breadCatUrl !== '' && $breadCatName !== '') {
-                            $breadCatLinks[] = '<a href="' . lt_esc_attr($breadCatUrl) . '">' . lt_esc_html($breadCatName) . '</a>';
-                        }
+                    $ltBreadChain = lt_post_breadcrumb_chain($this->categories, (string) $this->options->index);
+                    $ltBreadLinks = [];
+                    foreach ($ltBreadChain as $ltRow) {
+                        $ltBreadLinks[] = ($ltRow['url'] !== '')
+                            ? '<a href="' . lt_esc_attr($ltRow['url']) . '">' . lt_esc_html($ltRow['name']) . '</a>'
+                            : '<span>' . lt_esc_html($ltRow['name']) . '</span>';
                     }
-                    if (!empty($breadCatLinks)) {
-                        $breadCatHtml = implode(' , ', $breadCatLinks);
+                    if (!empty($ltBreadLinks)) {
+                        $breadCatHtml = implode('<span class="breadcrumb-sep">-&gt;</span>', $ltBreadLinks);
                     }
                 }
                 ?>
@@ -221,100 +174,12 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
                     } else {
                         ob_start();
                         $this->content();
-                        $content = (string) ob_get_clean();
-
-                    $ltImgIndex = 0;
-
-                    $ltAnchors = [];
-                    $_tmp = preg_replace_callback(
-                        '/<a\b[^>]*>.*?<\/a>/is',
-                        function (array $matches) use (&$ltAnchors): string {
-                            $key = '@@LT_ANCHOR_' . count($ltAnchors) . '@@';
-                            $ltAnchors[$key] = $matches[0];
-                            return $key;
-                        },
-                        $content
-                    );
-                    $content = $_tmp !== null ? $_tmp : $content;
-
-                    $_tmp = preg_replace_callback(
-                        '/<img\b[^>]*>/i',
-                        function (array $matches) use ($title, &$ltImgIndex): string {
-                            $tag = $matches[0];
-                            $src = '';
-                            if (preg_match('/(?<![-\w])src=(["\'])(.*?)\1/i', $tag, $sm)) {
-                                $src = lt_safe_url((string) ($sm[2] ?? ''));
-                            }
-                            if ($src === '') {
-                                return $tag;
-                            }
-                            $alt = '';
-                            if (preg_match('/(?<![-\w])alt=(["\'])(.*?)\1/i', $tag, $am)) {
-                                $alt = trim((string) ($am[2] ?? ''));
-                            }
-                            if ($alt === '') {
-                                $alt = $title;
-                            }
-                            $newImg = preg_replace_callback(
-                                '/(?<![-\w])src=(["\'])(.*?)\1/i',
-                                function (array $m) use ($src): string {
-                                    return 'src="' . lt_esc_attr($src) . '"';
-                                },
-                                $tag
-                            );
-
-                            $insertAttr = static function (string $tag, string $attr): string {
-                                if (preg_match('/\/>\s*$/', $tag)) {
-                                    return preg_replace('/\/>\s*$/', ' ' . $attr . ' />', $tag);
-                                }
-                                if (preg_match('/>\s*$/', $tag)) {
-                                    return preg_replace('/>\s*$/', ' ' . $attr . '>', $tag);
-                                }
-                                return $tag . ' ' . $attr;
-                            };
-                            if (!preg_match('/(?<![-\w])alt=/i', $newImg)) {
-                                $newImg = $insertAttr($newImg, 'alt="' . lt_esc_attr($alt) . '"');
-                            }
-
-                            if (!preg_match('/\sloading=/i', $newImg)) {
-                                if ($ltImgIndex === 0) {
-                                    $newImg = $insertAttr($newImg, 'loading="eager" fetchpriority="high"');
-                                } else {
-                                    $newImg = $insertAttr($newImg, 'loading="lazy"');
-                                }
-                            }
-                            $ltImgIndex++;
-                            return '<a href="' . lt_esc_attr($src) . '" class="fancybox" data-fancybox="gallery">' . $newImg . '</a>';
-                        },
-                        $content
-                    );
-                    $content = $_tmp !== null ? $_tmp : $content;
-
-                    $content = strtr($content, $ltAnchors);
-
-                    $_tmp = preg_replace_callback(
-                        '/<pre\b([^>]*)>/i',
-                        function (array $matches): string {
-                            $attrs = $matches[1];
-                            if (preg_match('/\bclass=["\'][^"\']*line-numbers/i', $attrs)) {
-                                return $matches[0];
-                            }
-                            if (preg_match('/\bclass=["\']([^"\']*)["\']/i', $attrs, $cm)) {
-                                $attrs = str_replace($cm[0], 'class="' . trim($cm[1]) . ' line-numbers"', $attrs);
-                            } else {
-                                $attrs .= ' class="line-numbers"';
-                            }
-                            return '<pre' . $attrs . '>';
-                        },
-                        $content
-                    );
-                    $content = $_tmp !== null ? $_tmp : $content;
-
-                    if ($ltCid > 0) {
-                        // 写缓存：chars 与摘要由上方前置计算块产出（post-meta 输出前已算好），此处不再重复计算
-                        lt_content_cache_set($ltCid, $ltConfigHash . '||' . $wordCount . '||' . \Typecho\Common::subStr($_postPlainText, 0, 100, '...') . '||' . $content);
-                    }
-                    echo $content;
+                        $ltProcessed = lt_content_render_pipeline((string) ob_get_clean(), $title);
+                        if ($ltCid > 0) {
+                            
+                            lt_content_cache_set($ltCid, lt_content_cache_payload($ltConfigHash, $wordCount, $_postPlainText, $ltProcessed));
+                        }
+                        echo $ltProcessed;
                     }
                     ?>
 <?php else: ?>
@@ -324,14 +189,14 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
 
 <?php if (!$this->hidden): ?>
 <?php if ($isPost): ?>
-                    <!-- 第 1 层：来源 / 版权声明框 -->
+                    
 <?php if ($showCopyright): ?>
                     <div class="post-copyright">
 <?php printf(_t('本文为 %s 原创文章，如若转载，请注明出处：'), lt_esc_html(lt_text($this->options->title ?? ''))); ?>
                         <a href="<?php echo lt_esc_attr($this->permalink); ?>"><?php echo lt_esc_html($this->permalink); ?></a>
                     </div>
 <?php endif; ?>
-                    <!-- 第 2 层：居中 赞 / 打赏 -->
+                    
                     <div class="post-actions">
                         <button type="button" class="action-btn action-like lt-like-btn <?php if ($hasLiked) echo 'liked'; ?>" id="likeBtn" data-cid="<?php echo $cid; ?>" data-token="<?php echo lt_esc_attr($ltLikeToken); ?>" <?php if ($hasLiked) echo 'disabled'; ?>>
                             <i class="lt-icon icon-upvote action-icon" aria-hidden="true"></i>
@@ -347,12 +212,12 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
                     </div>
 <?php endif; ?>
 
-                <!-- 标签：位于工具栏分割线上方，左对齐 -->
+                
                 <div class="post-tags"><?php $this->tags('', true, ''); ?></div>
 
 <?php if ($isPost): ?>
 <?php
-                    // 分享外链参数（O1）：摘要与分享图，供微博分享卡片使用
+                    
                     $shareSummary = \Typecho\Common::subStr($_postPlainText, 0, 100, '...');
                     $sharePic = lt_text($this->fields->bannerUrl ?? '');
                     if ($sharePic === '') {
@@ -363,21 +228,21 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
                         if (str_starts_with($sharePic, '/')) {
                             $sharePic = $siteUrlShare . $sharePic;
                         } elseif (str_starts_with($sharePic, '//')) {
-                            // 协议相对地址（//cdn.com/x）：补 https: 前缀保持可解析
+                            
                             $sharePic = 'https:' . $sharePic;
                         } elseif (!preg_match('#^https?://#i', $sharePic)) {
                             $sharePic = $siteUrlShare . '/' . $sharePic;
                         }
                     }
                     ?>
-                    <!-- 第 3 层：底部分享 / 数据工具栏 -->
+                    
                     <div class="post-toolbar">
                         <div class="toolbar-left">
-                            <!-- 生成海报 -->
+                            
                             <button type="button" class="tool-icon share-poster" id="sharePosterBtn" title="<?php echo lt_esc_attr(_t('生成海报')); ?>">
                                 <i class="lt-icon icon-poster"></i><span><?php _e('生成海报'); ?></span>
                             </button>
-                            <!-- 微信好友（hover 弹出扫码二维码） -->
+                            
                             <span class="share-wechat-wrap">
                                 <button type="button" class="tool-icon share-wechat" title="<?php echo lt_esc_attr(_t('微信扫码分享')); ?>" aria-label="<?php echo lt_esc_attr(_t('微信扫码分享')); ?>" data-share-url="<?php echo lt_esc_attr($this->permalink); ?>">
                                     <i class="lt-icon icon-weixin"></i>
@@ -387,23 +252,23 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
                                     <span><?php _e('微信扫码分享'); ?></span>
                                 </span>
                             </span>
-                            <!-- 新浪微博 -->
+                            
                             <a class="tool-icon share-weibo" target="_blank" rel="noopener noreferrer" href="https://service.weibo.com/share/share.php?url=<?php echo rawurlencode($this->permalink); ?>&amp;title=<?php echo rawurlencode(lt_text($this->title)); ?>&amp;summary=<?php echo rawurlencode($shareSummary); ?><?php if ($sharePic !== ''): ?>&amp;pic=<?php echo rawurlencode($sharePic); ?><?php endif; ?>" title="<?php echo lt_esc_attr(_t('微博分享')); ?>">
                                 <svg class="share-svg" viewBox="0 0 1024 1024" aria-hidden="true"><path d="M747.712 485.44c53.888 16.768 113.92 57.024 113.92 128.192 0 117.888-169.856 266.24-425.152 266.24-194.752 0-393.792-94.464-393.792-249.728 0-81.152 51.328-175.04 139.776-263.552C300.8 248.384 438.656 194.496 490.496 246.464c22.912 22.912 25.088 62.464 10.432 109.696-7.616 23.808 22.4 10.688 22.4 10.688 95.552-40 179.008-42.432 209.408 1.152 16.256 23.168 14.656 55.68-0.32 93.44-6.976 17.344 2.048 20.096 15.36 24zM437.12 824.192c155.328-15.424 273.088-110.592 263.104-212.608-10.112-102.016-144.32-172.288-299.648-156.864-155.328 15.36-273.216 110.464-263.104 212.48 10.112 102.144 144.256 172.288 299.648 156.992zM262.848 616c32.128-65.152 115.712-101.952 189.696-82.752 76.48 19.776 115.456 91.904 84.288 162.112-31.744 71.808-122.944 110.016-200.32 85.056-74.752-24.128-106.368-97.92-73.664-164.416z m61.696 110.4c24.192 10.944 56.512 0.576 71.488-23.488 14.72-24.192 6.976-51.904-17.344-62.208-24.064-10.112-55.104 0.32-70.016 23.552-15.104 23.36-8.064 51.328 15.872 62.144z m94.08-77.12c9.344 3.904 21.376-0.512 26.816-9.856 5.248-9.408 1.92-19.904-7.616-23.424-9.216-3.584-20.736 0.768-26.112 9.92-5.248 9.152-2.304 19.52 6.912 23.36z m429.312-243.968a30.912 30.912 0 1 1-58.816-19.2 58.88 58.88 0 0 0-68.672-76.032 30.912 30.912 0 0 1-12.928-60.416 120.96 120.96 0 0 1 140.416 155.648zM680.832 124.8a248.768 248.768 0 0 1 288.576 320 35.776 35.776 0 0 1-45.248 23.04 36.032 36.032 0 0 1-23.104-45.376 176.768 176.768 0 0 0-205.12-227.264 36.032 36.032 0 0 1-15.104-70.4z"/></svg>
                             </a>
-                            <!-- QQ 好友 -->
+                            
                             <a class="tool-icon share-qq" target="_blank" rel="noopener noreferrer" href="https://connect.qq.com/widget/shareqq/index.html?url=<?php echo rawurlencode($this->permalink); ?>&amp;title=<?php echo rawurlencode(lt_text($this->title)); ?>&amp;summary=<?php echo rawurlencode($shareSummary); ?><?php if ($sharePic !== ''): ?>&amp;pics=<?php echo rawurlencode($sharePic); ?><?php endif; ?>" title="<?php echo lt_esc_attr(_t('QQ 分享')); ?>">
                                 <svg class="share-svg" viewBox="0 0 1024 1024" aria-hidden="true"><path d="M849.6 619.904a1364.352 1364.352 0 0 0-28.8-80.448L782.08 443.52c0-1.088 0.512-19.968 0.512-29.696 0-163.84-78.208-328.576-270.528-328.576-192.32 0-270.528 164.736-270.528 328.576 0 9.728 0.512 28.608 0.512 29.696L203.2 539.52c-10.624 27.392-21.12 55.936-28.8 80.448-36.736 116.8-24.832 165.12-15.744 166.208 19.392 2.304 75.52-87.936 75.52-87.936 0 52.224 27.2 120.448 86.016 169.664-21.952 6.72-48.896 17.024-66.304 29.632-15.552 11.392-13.568 23.04-10.752 27.776 12.288 20.48 211.392 13.056 268.928 6.656 57.472 6.4 256.576 13.824 268.864-6.72 2.816-4.672 4.8-16.32-10.816-27.712-17.344-12.608-44.288-22.912-66.304-29.696 58.816-49.152 86.016-117.376 86.016-169.6 0 0 56.128 90.24 75.52 87.872 9.088-1.088 20.928-49.344-15.744-166.144z"/></svg>
                             </a>
-                            <!-- QQ 空间 -->
+                            
                             <a class="tool-icon share-qzone" target="_blank" rel="noopener noreferrer" href="https://sns.qzone.qq.com/cgi-bin/qzshare/cgi_qzshare_onekey?url=<?php echo rawurlencode($this->permalink); ?>&amp;title=<?php echo rawurlencode(lt_text($this->title)); ?>&amp;summary=<?php echo rawurlencode($shareSummary); ?><?php if ($sharePic !== ''): ?>&amp;pic=<?php echo rawurlencode($sharePic); ?><?php endif; ?>" title="<?php echo lt_esc_attr(_t('QQ 空间分享')); ?>">
                                 <svg class="share-svg" viewBox="0 0 1024 1024" aria-hidden="true"><path d="M312.26 658.78666667c22.08-24.6 305.52-182.4 305.52-182.4l-370.14-49.2 495-5.82s17.64 14.46 0 34.8c-17.58 20.22-280.5 198.3-280.5 198.3l298.92 23.64-9.06-52.32 240-230.58-331.68-47.46L512 51.46666667 363.68 347.74666667 32 395.20666667l240 230.58L215.36 951.46666667 512 797.74666667 808.64 951.46666667l-46.5-267.36-449.88 19.62s-22.02-20.28 0-44.94z m439.74-10.8l1.26 6.96 58.74-2.46-60-4.5z"/></svg>
                             </a>
-                            <!-- 原生分享（系统分享面板，不支持时前端自动隐藏） -->
+                            
                             <button type="button" class="tool-icon share-native" title="<?php echo lt_esc_attr(_t('分享')); ?>" aria-label="<?php echo lt_esc_attr(_t('分享')); ?>" data-share-url="<?php echo lt_esc_attr($this->permalink); ?>" data-share-title="<?php echo lt_esc_attr(lt_text($this->title)); ?>">
                                 <i class="share-native-icon" aria-hidden="true"></i>
                             </button>
-                            <!-- 复制链接 -->
+                            
                             <button type="button" class="tool-icon share-copy" data-url="<?php echo lt_esc_attr($this->permalink); ?>" title="<?php echo lt_esc_attr(_t('复制链接')); ?>" aria-label="<?php echo lt_esc_attr(_t('复制链接')); ?>">
                                 <i class="lt-icon icon-copylink"></i>
                             </button>
@@ -427,7 +292,7 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
 
 <?php if ($postAdSlot !== ''): ?>
                     <div class="post-ad-slot">
-<?php echo $postAdSlot; ?>
+<?php echo lt_add_nonce_to_scripts($postAdSlot, lt_generate_csp_nonce()); ?>
                     </div>
 <?php endif; ?>
 
@@ -443,7 +308,7 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
 <?php endif; ?>
 
 <?php
-                    // 相关文章：优先标签相关（related），无结果时 fallback 同分类最新文章
+                    
                     $relatedRows = [];
                     try {
                         $this->related(3)->to($relatedPosts);
@@ -473,6 +338,7 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
                                         ->where('table.relationships.mid = ?', $ltRelMid)
                                         ->where('table.contents.type = ?', 'post')
                                         ->where('table.contents.status = ?', 'publish')
+                                        ->where('table.contents.created <= ?', time())
                                         ->where('table.contents.password IS NULL OR table.contents.password = ?', '')
                                         ->where('table.contents.cid <> ?', $cid)
                                         ->limit(3)
@@ -498,14 +364,14 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
                         </div>
 <?php endif; ?>
 <?php
-                    // 相关推荐：读取后台「首页推荐阅读」(cIdRecommend) 配置的文章，无内容不显示
+                    
                     $ltRecommendRows = [];
                     if ($isPost) {
                         try {
                             $ltRecommendRaw = lt_filter_cid_recommend(lt_text($this->options->cIdRecommend ?? ''));
                             $ltRecommendCids = array_values(array_unique(array_filter(
                                 array_map('trim', explode('||', $ltRecommendRaw)),
-                                // 排除当前文章（不推荐自己）
+                                
                                 static fn(string $v): bool => $v !== '' && ctype_digit($v) && (int) $v !== $cid
                             )));
                             if (!empty($ltRecommendCids)) {
@@ -514,7 +380,7 @@ if (!$ltCacheHit && $ltCid > 0 && $isPost && !$this->hidden) {
                                 $ltRecommendRows = $ltDb->fetchAll(
                                     $ltDb->select('cid', 'type', 'title', 'slug', 'created')
                                         ->from('table.contents')
-                                        ->where('cid IN ? AND type = ? AND status = ? AND (password IS NULL OR password = ?)', $ltRecommendCids, 'post', 'publish', '')
+                                        ->where('cid IN ? AND type = ? AND status = ? AND created <= ? AND (password IS NULL OR password = ?)', $ltRecommendCids, 'post', 'publish', time(), '')
                                 );
                                 $ltOrderMap = array_flip($ltRecommendCids);
                                 usort($ltRecommendRows, static fn(array $a, array $b): int => ($ltOrderMap[(int) ($a['cid'] ?? 0)] ?? 999) <=> ($ltOrderMap[(int) ($b['cid'] ?? 0)] ?? 999));

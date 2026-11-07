@@ -37,10 +37,10 @@ $ltEagerRendered = false;
 <?php
             $ltBatchFields = [];
             if ($this->have()) {
-                // 预取字段：先完整遍历一遍收集 cid（批量查 fields 表避免 N+1）；
-                // 依赖 Typecho Widget::next() 的既有契约——游标遍历到末尾后自动 reset 回开头
-                // （已核对 Typecho 1.3 源码：next() 在序列耗尽时 reset($stack) 并返回 false），
-                // 故下方渲染循环可再次 next() 从头输出
+                
+                
+                
+                
                 $ltCids = [];
                 while ($this->next()) {
                     $ltCids[] = (int) $this->cid;
@@ -48,10 +48,13 @@ $ltEagerRendered = false;
                 if ($ltCids !== []) {
                     try {
                         $ltDb = \Typecho\Db::get();
+                        
+                        
                         $ltRows = $ltDb->fetchAll(
-                            $ltDb->select()
+                            $ltDb->select('cid', 'name', 'str_value')
                                 ->from('table.fields')
                                 ->where('cid IN ?', $ltCids)
+                                ->where('name IN ?', ['articleDesc', 'bannerUrl'])
                         );
                         foreach ($ltRows as $ltRow) {
                             $ltCid = (int) ($ltRow['cid'] ?? 0);
@@ -110,7 +113,9 @@ $ltEagerRendered = false;
                                 <div class="item-img <?php if ($greyImg) echo "color-filter"; ?>">
 <?php if ($thumb !== '' && $ltFirstScreen && !$ltEagerRendered): ?>
 <?php
-                                    $ltBgCss = "background-image:url('" . str_replace("'", "\\'", $thumb) . "')";
+                                    
+                                    
+                                    $ltBgCss = "background-image:url('" . str_replace("'", "\\'", str_replace("\\", "", $thumb)) . "')";
                                     $ltEagerRendered = true;
                                     ?>
                                     <div class="blog-background loaded" style="<?php echo lt_esc_attr($ltBgCss); ?>"></div>

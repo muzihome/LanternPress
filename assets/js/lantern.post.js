@@ -1,3 +1,18 @@
+(function () {
+if (window.LANTERTOWN_CONFIG) {
+return;
+}
+var el = document.getElementById('lt-config');
+if (el) {
+try {
+window.LANTERTOWN_CONFIG = JSON.parse(el.textContent);
+} catch (e) {
+window.LANTERTOWN_CONFIG = {};
+}
+} else {
+window.LANTERTOWN_CONFIG = {};
+}
+})();
 (() => {
 'use strict';
 const Lantern = window.Lantern;
@@ -6,27 +21,23 @@ const LT = window.LT_UTIL || {};
 const copyText = LT.copyText || function () { return Promise.resolve(false); };
 const showToast = LT.showToast || function () { };
 const proto = Lantern.prototype;
-
-// qrcode 库懒加载：首次需要（微信扫码 / 海报二维码）时动态注入 qrcode.min.js，
-// 避免文章页初始加载 19.9KB 第三方库；加载失败可重试（_ltQrPromise 置空）
 let _ltQrPromise = null;
 const _ltLoadQrcode = () => {
-	if (typeof QRCode !== 'undefined') return Promise.resolve();
-	if (_ltQrPromise) return _ltQrPromise;
-	const cfg = window.LANTERTOWN_CONFIG || {};
-	const base = String(cfg.THEME_URL || '').replace(/\/+$/, '') || '/usr/themes/LanternPress';
-	const ver = cfg.ASSET_VERSION ? '?v=' + encodeURIComponent(String(cfg.ASSET_VERSION)) : '';
-	_ltQrPromise = new Promise((resolve, reject) => {
-		const s = document.createElement('script');
-		s.src = base + '/assets/vendor/qrcode/qrcode.min.js' + ver;
-		s.async = true;
-		s.onload = () => { resolve(); };
-		s.onerror = () => { _ltQrPromise = null; reject(new Error('qrcode 库加载失败')); };
-		document.head.appendChild(s);
-	});
-	return _ltQrPromise;
+if (typeof QRCode !== 'undefined') return Promise.resolve();
+if (_ltQrPromise) return _ltQrPromise;
+const cfg = window.LANTERTOWN_CONFIG || {};
+const base = String(cfg.THEME_URL || '').replace(/\/+$/, '') || '/usr/themes/LanternPress';
+const ver = cfg.ASSET_VERSION ? '?v=' + encodeURIComponent(String(cfg.ASSET_VERSION)) : '';
+_ltQrPromise = new Promise((resolve, reject) => {
+const s = document.createElement('script');
+s.src = base + '/assets/vendor/qrcode/qrcode.min.js' + ver;
+s.async = true;
+s.onload = () => { resolve(); };
+s.onerror = () => { _ltQrPromise = null; reject(new Error('qrcode 库加载失败')); };
+document.head.appendChild(s);
+});
+return _ltQrPromise;
 };
-
 proto.initLightbox = function () {
 const links = Array.prototype.slice.call(document.querySelectorAll('#post-content a.fancybox'));
 if (!links.length) {
@@ -143,7 +154,6 @@ first.focus();
 }
 });
 };
-
 proto.initCodeCopy = function () {
 const doInit = () => {
 const pres = document.querySelectorAll('#post-content pre');
@@ -173,7 +183,6 @@ document.addEventListener('DOMContentLoaded', doInit);
 doInit();
 }
 };
-
 proto.initCatalog = function () {
 const postContent = document.getElementById('post-content');
 const mount = document.getElementById('catalog-directory');
@@ -198,7 +207,6 @@ titles.forEach((node, index) => {
 if (!node.id) {
 let autoId = 'menu-index-' + (index + 1);
 let suffix = 2;
-// 自动 id 判重：正文已存在同名 id 时追加后缀，避免锚点跳转歧义
 while (document.getElementById(autoId)) {
 autoId = 'menu-index-' + (index + 1) + '-' + suffix++;
 }
@@ -309,6 +317,13 @@ const target = document.querySelector(href);
 if (!target) {
 return;
 }
+const foldWrap = document.querySelector('.post-fold-wrap.post-fold');
+if (foldWrap && foldWrap.contains(target)) {
+const fh = parseInt(getComputedStyle(foldWrap).getPropertyValue('--lt-fold-height'), 10);
+if (fh && target.offsetTop > fh) {
+return;
+}
+}
 e.preventDefault();
 target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 if (window.history && window.history.replaceState) {
@@ -354,7 +369,6 @@ mobileMql.addListener(onMqChange);
 applyMode(isMobile);
 updateActive();
 };
-
 proto.initSocialPopup = function () {
 const bg = document.getElementById('background-layer');
 if (!bg) {
@@ -379,7 +393,7 @@ img.alt = '';
 popupBody.appendChild(img);
 });
 lastFocused = document.activeElement;
-this.openPosterLayer(bg, closeBtn);
+this.openPosterLayer(bg, closeBtn, 'social');
 };
 const close = () => {
 this.closePosterLayer(bg, lastFocused);
@@ -391,7 +405,7 @@ close();
 }
 });
 document.addEventListener('keydown', (e) => {
-if (e.key === 'Escape' && isVisible()) {
+if (e.key === 'Escape' && isVisible() && bg.getAttribute('data-popup-owner') === 'social') {
 close();
 }
 });
@@ -444,7 +458,6 @@ showToast(ok ? '链接已复制' : '复制失败，请手动复制', ok ? 'succe
 });
 });
 };
-
 proto.initComment = function () {
 window.TypechoComment = {
 dom: function (id) {
@@ -526,9 +539,27 @@ behavior: 'smooth'
 return false;
 }
 };
+document.addEventListener('click', (e) => {
+const link = e.target && e.target.closest ? e.target.closest('.comment-reply-link, .cancel-comment-reply-link') : null;
+if (!link) {
+return;
+}
+e.preventDefault();
+if (!window.TypechoComment) {
+return;
+}
+if (link.classList.contains('comment-reply-link')) {
+const cid = link.getAttribute('data-cid');
+const coid = link.getAttribute('data-coid');
+if (cid) {
+window.TypechoComment.reply(cid, coid);
+}
+} else {
+window.TypechoComment.cancelReply();
+}
+});
 this.initCommentAjax();
 };
-
 proto.initCommentAjax = function () {
 if (typeof window.fetch !== 'function') {
 return;
@@ -536,13 +567,70 @@ return;
 const self = this;
 document.addEventListener('submit', (e) => {
 const form = e.target;
-if (form && form.id === 'comment-form') {
+if (!form) {
+return;
+}
+if (form.id === 'comment-form') {
 e.preventDefault();
 self.handleCommentSubmit(form);
+} else if (form.id === 'flinks-apply-form') {
+e.preventDefault();
+self.handleFlinksApplySubmit(form);
 }
 });
 };
-
+proto.handleFlinksApplySubmit = function (form) {
+const showBox = (type, msg) => {
+form.parentNode.querySelectorAll('.comment-form-status').forEach((b) => b.remove());
+const box = document.createElement('div');
+box.className = 'comment-form-status ' + type;
+box.setAttribute('role', 'status');
+box.textContent = msg;
+form.parentNode.insertBefore(box, form);
+};
+const extractError = (html) => {
+const patterns = [
+/(评论内容不能为空|请输入评论内容|评论内容过长|请输入正确的邮箱地址|邮箱格式不正确|评论提交过于频繁|请稍后再试|验证码错误|请输入验证码|请输入昵称|昵称不能为空)/,
+/(对不起[^<。；;]{0,40})/,
+/(页面已过期|请刷新页面后重试|系统错误)/
+];
+for (const p of patterns) {
+const m = html.match(p);
+if (m) {
+return m[1];
+}
+}
+return null;
+};
+(async () => {
+const submitBtn = form.querySelector('button[type="submit"]');
+if (submitBtn) {
+submitBtn.disabled = true;
+}
+const formData = new FormData(form);
+try {
+const resp = await fetch(form.action, {
+method: 'POST',
+body: formData,
+credentials: 'same-origin',
+headers: { 'X-Requested-With': 'XMLHttpRequest' }
+});
+const html = await resp.text();
+if (!resp.ok) {
+const msg = resp.status === 403 ? '请求已过期，请刷新页面后重试' : (extractError(html) || '提交失败，请检查填写内容后重试');
+showBox('error', msg);
+return;
+}
+showBox('success', '提交成功，等待管理员审核。');
+form.reset();
+} catch (err) {
+showBox('error', '网络异常，请稍后重试');
+}
+if (submitBtn) {
+submitBtn.disabled = false;
+}
+})();
+};
 proto.handleCommentSubmit = function (form) {
 const submitBtn = document.getElementById('misubmit');
 const showBox = (type, msg) => {
@@ -619,7 +707,6 @@ submitBtn.disabled = false;
 }
 })();
 };
-
 proto.initCodeLang = function () {
 const pres = document.querySelectorAll('#post-content pre');
 if (!pres.length) {
@@ -661,7 +748,6 @@ span.textContent = langMap[raw] || raw.charAt(0).toUpperCase() + raw.slice(1);
 pre.appendChild(span);
 });
 };
-
 proto.initReadingProgress = function () {
 const bar = document.getElementById('reading-progress');
 if (!bar) {
@@ -677,7 +763,6 @@ bar.style.width = (ratio * 100) + '%';
 window.addEventListener('scroll', update, { passive: true });
 update();
 };
-
 proto.initLikeButton = function () {
 const btn = document.querySelector('.lt-like-btn');
 if (!btn) {
@@ -724,7 +809,10 @@ countEl.textContent = data.likes;
 btn.classList.add('liked');
 btn.disabled = true;
 } else {
-throw new Error(data && data.error ? data.error : 'like failed');
+btn.disabled = false;
+if (window.LT_UTIL && window.LT_UTIL.showToast) {
+window.LT_UTIL.showToast((data && data.error) || '操作未成功', 'error');
+}
 }
 } catch (err) {
 if (countEl) {
@@ -741,672 +829,616 @@ btn.disabled = false;
 }
 });
 };
-
 proto.initPostToolbar = function () {
-	// 微信：桌面 hover/focus 弹出扫码；触屏点击切换、点外部关闭（qrcode 库懒加载，首次需要时注入）
-	document.querySelectorAll('.share-wechat-wrap').forEach((wrap) => {
-		const btn = wrap.querySelector('.share-wechat');
-		const box = wrap.querySelector('.j-share-qrcode');
-		if (!box) return;
-		let rendered = false;
-		const render = () => {
-			if (rendered) return;
-			_ltLoadQrcode().then(() => {
-				try {
-					new QRCode(box, {
-						text: (btn && btn.getAttribute('data-share-url')) || window.location.href,
-						width: 128,
-						height: 128,
-						correctLevel: QRCode.CorrectLevel.M
-					});
-					rendered = true;
-				} catch (err) {
-					console.warn('[LanternPress] 微信二维码生成失败', err);
-				}
-			}).catch((err) => {
-				console.warn('[LanternPress] qrcode 库加载失败', err);
-			});
-		};
-		wrap.addEventListener('mouseenter', render);
-		wrap.addEventListener('focusin', render);
-		// 触屏（hover:none，不误伤触屏笔记本）：点击切换面板；点击外部关闭（统一委托，避免多 wrap 累积监听）
-		if (window.matchMedia && window.matchMedia('(hover: none)').matches) {
-			btn.addEventListener('click', () => {
-				render();
-				wrap.classList.toggle('active');
-			});
-		}
-	});
-	// 触屏：点击面板外部关闭所有微信面板（单次委托监听）
-	if (window.matchMedia && window.matchMedia('(hover: none)').matches) {
-		document.addEventListener('click', (e) => {
-			const activeWrap = e.target.closest('.share-wechat-wrap');
-			document.querySelectorAll('.share-wechat-wrap.active').forEach((w) => {
-				if (!activeWrap || w !== activeWrap) w.classList.remove('active');
-			});
-		});
-	}
-		// 原生分享：调用系统分享面板（navigator.share），不支持则隐藏按钮
-		document.querySelectorAll('.share-native').forEach((el) => {
-			if (typeof navigator.share !== 'function') {
-				el.style.display = 'none';
-				return;
-			}
-			el.addEventListener('click', async (e) => {
-				e.preventDefault();
-				const url = el.getAttribute('data-share-url') || window.location.href;
-				const title = el.getAttribute('data-share-title') || document.title;
-				try {
-					await navigator.share({ title: title, url: url });
-				} catch (err) {
-					if (err && err.name !== 'AbortError') {
-						showToast('分享失败，请使用复制链接', 'error');
-					}
-				}
-			});
-		});
-	// 书签：浏览器安全限制无法自动添加收藏，点击引导用户使用快捷键（1.5s 内重复点击不重复弹）
-	let _ltFavToastAt = 0;
-	document.querySelectorAll('.share-fav').forEach((btn) => {
-		btn.addEventListener('click', () => {
-			const now = Date.now();
-			if (now - _ltFavToastAt < 1500) return;
-			_ltFavToastAt = now;
-			const isTouch = window.matchMedia && window.matchMedia('(hover: none)').matches;
-			const isMac = /Mac|iPhone|iPad/i.test(navigator.platform || '');
-			showToast(
-				isTouch
-					? '请在浏览器菜单中选择「添加到书签/收藏」'
-					: (isMac ? '请按 ⌘ + D 将本页添加到浏览器书签' : '请按 Ctrl + D 将本页添加到浏览器书签'),
-				'success'
-			);
-		});
-	});
+document.querySelectorAll('.share-wechat-wrap').forEach((wrap) => {
+const btn = wrap.querySelector('.share-wechat');
+const box = wrap.querySelector('.j-share-qrcode');
+if (!box) return;
+let rendered = false;
+const render = () => {
+if (rendered) return;
+_ltLoadQrcode().then(() => {
+try {
+new QRCode(box, {
+text: (btn && btn.getAttribute('data-share-url')) || window.location.href,
+width: 128,
+height: 128,
+correctLevel: QRCode.CorrectLevel.M
+});
+rendered = true;
+} catch (err) {
+console.warn('[LanternPress] 微信二维码生成失败', err);
+}
+}).catch((err) => {
+console.warn('[LanternPress] qrcode 库加载失败', err);
+});
 };
-
+wrap.addEventListener('mouseenter', render);
+wrap.addEventListener('focusin', render);
+if (window.matchMedia && window.matchMedia('(hover: none)').matches) {
+btn.addEventListener('click', () => {
+render();
+wrap.classList.toggle('active');
+});
+}
+});
+if (window.matchMedia && window.matchMedia('(hover: none)').matches) {
+document.addEventListener('click', (e) => {
+const activeWrap = e.target.closest('.share-wechat-wrap');
+document.querySelectorAll('.share-wechat-wrap.active').forEach((w) => {
+if (!activeWrap || w !== activeWrap) w.classList.remove('active');
+});
+});
+}
+document.querySelectorAll('.share-native').forEach((el) => {
+if (typeof navigator.share !== 'function') {
+el.style.display = 'none';
+return;
+}
+el.addEventListener('click', async (e) => {
+e.preventDefault();
+const url = el.getAttribute('data-share-url') || window.location.href;
+const title = el.getAttribute('data-share-title') || document.title;
+try {
+await navigator.share({ title: title, url: url });
+} catch (err) {
+if (err && err.name !== 'AbortError') {
+showToast('分享失败，请使用复制链接', 'error');
+}
+}
+});
+});
+let _ltFavToastAt = 0;
+document.querySelectorAll('.share-fav').forEach((btn) => {
+btn.addEventListener('click', () => {
+const now = Date.now();
+if (now - _ltFavToastAt < 1500) return;
+_ltFavToastAt = now;
+const isTouch = window.matchMedia && window.matchMedia('(hover: none)').matches;
+const isMac = /Mac|iPhone|iPad/i.test(navigator.platform || '');
+showToast(
+isTouch
+? '请在浏览器菜单中选择「添加到书签/收藏」'
+: (isMac ? '请按 ⌘ + D 将本页添加到浏览器书签' : '请按 Ctrl + D 将本页添加到浏览器书签'),
+'success'
+);
+});
+});
+};
 proto.initPostFold = function () {
-	const content = document.getElementById('post-content');
-	if (!content || content.getAttribute('data-fold-bound')) return;
-	const cfg = window.LANTERTOWN_CONFIG || {};
-	if (String(cfg.POST_FOLD_ENABLE) === '0') return;
-	const threshold = Math.max(400, parseInt(cfg.POST_FOLD_THRESHOLD, 10) || 2000);
-	const heightCfg = Math.max(300, parseInt(cfg.POST_FOLD_HEIGHT, 10) || 1500);
-	const minRatio = Math.min(80, Math.max(5, parseInt(cfg.POST_FOLD_MIN_RATIO, 10) || 20));
-	// 移动端（≤767px，与主题断点一致）按视口高度折算约 1.8 屏；桌面用后台配置值
-	const getFoldHeight = () => (window.matchMedia && window.matchMedia('(max-width: 767px)').matches)
-		? Math.max(300, Math.round((window.innerHeight || 800) * 1.8))
-		: heightCfg;
-	let foldHeight = getFoldHeight();
-	let wrap = null;
-	let expanded = false;
-	const maybeFold = () => {
-		// 已折叠 / 已展开 / 已绑定：幂等跳过（含 load 二次检测）
-		if (expanded || wrap) return;
-		const fullHeight = content.scrollHeight;
-		if (fullHeight <= threshold) return;
-		const remainRatio = Math.round((fullHeight - foldHeight) / fullHeight * 100);
-		if (remainRatio < minRatio) return;
-		wrap = document.createElement('div');
-		wrap.id = 'postFoldWrap';
-		wrap.className = 'post-fold-wrap post-fold';
-		wrap.style.setProperty('--lt-fold-height', foldHeight + 'px');
-		content.parentNode.insertBefore(wrap, content);
-		wrap.appendChild(content);
-		const btn = document.createElement('button');
-		btn.type = 'button';
-		btn.className = 'post-fold-btn';
-		btn.setAttribute('aria-label', '展开全文继续阅读');
-		btn.textContent = '\u9605\u8bfb\u5269\u4f59 ' + remainRatio + '%';
-		wrap.appendChild(btn);
-		btn.addEventListener('click', expand);
-		// 目录点击折叠区内锚点：先展开再走默认锚点跳转
-		const catalog = document.querySelector('.catalog-directory');
-		if (catalog) {
-			catalog.addEventListener('click', (e) => {
-				if (expanded || !wrap.classList.contains('post-fold')) return;
-				const a = e.target.closest('a[href^="#"]');
-				if (!a) return;
-				const id = decodeURIComponent(a.getAttribute('href').slice(1));
-				const target = id ? document.getElementById(id) : null;
-				if (target && target.offsetTop > foldHeight) {
-					e.preventDefault();
-					expand();
-					// 展开后滚动到锚点（延时等布局重排）
-					setTimeout(() => { try { document.getElementById(id).scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (err) { } }, 60);
-				}
-			});
-		}
-	};
-	const expand = () => {
-		if (expanded) return;
-		expanded = true;
-		if (wrap) wrap.classList.remove('post-fold');
-		if (window.fitSidebarToContent) setTimeout(window.fitSidebarToContent, 60);
-	};
-	// 移动端旋转 / 跨断点（767px）时重算折叠高度；展开后不再干预
-	const recalcFoldHeight = () => {
-		const next = getFoldHeight();
-		if (next === foldHeight) return;
-		foldHeight = next;
-		if (expanded || !wrap || !wrap.classList.contains('post-fold')) return;
-		const fullHeight = content.scrollHeight;
-		if (Math.round((fullHeight - foldHeight) / fullHeight * 100) < minRatio) {
-			// 旋转后剩余比例跌破下限 → 自动展开，避免「阅读剩余 X%」比例过低
-			expand();
-			return;
-		}
-		wrap.style.setProperty('--lt-fold-height', foldHeight + 'px');
-	};
-	if (window.matchMedia) {
-		const mq = window.matchMedia('(max-width: 767px)');
-		const handler = () => recalcFoldHeight();
-		if (mq.addEventListener) mq.addEventListener('change', handler);
-		else if (mq.addListener) mq.addListener(handler);
-	}
-	content.setAttribute('data-fold-bound', '1');
-	maybeFold();
-	// 图片/字体加载后 scrollHeight 可能变大：未展开且未折叠时二次检测
-	window.addEventListener('load', maybeFold);
+const content = document.getElementById('post-content');
+if (!content || content.getAttribute('data-fold-bound')) return;
+const cfg = window.LANTERTOWN_CONFIG || {};
+if (String(cfg.POST_FOLD_ENABLE) === '0') return;
+const threshold = Math.max(400, parseInt(cfg.POST_FOLD_THRESHOLD, 10) || 2000);
+const heightCfg = Math.max(300, parseInt(cfg.POST_FOLD_HEIGHT, 10) || 1500);
+const minRatio = Math.min(80, Math.max(5, parseInt(cfg.POST_FOLD_MIN_RATIO, 10) || 20));
+const getFoldHeight = () => (window.matchMedia && window.matchMedia('(max-width: 767px)').matches)
+? Math.max(300, Math.round((window.innerHeight || 800) * 1.8))
+: heightCfg;
+let foldHeight = getFoldHeight();
+let wrap = null;
+let expanded = false;
+const maybeFold = () => {
+if (expanded || wrap) return;
+const fullHeight = content.scrollHeight;
+if (fullHeight <= threshold) return;
+const remainRatio = Math.round((fullHeight - foldHeight) / fullHeight * 100);
+if (remainRatio < minRatio) return;
+wrap = document.createElement('div');
+wrap.id = 'postFoldWrap';
+wrap.className = 'post-fold-wrap post-fold';
+wrap.style.setProperty('--lt-fold-height', foldHeight + 'px');
+content.parentNode.insertBefore(wrap, content);
+wrap.appendChild(content);
+const btn = document.createElement('button');
+btn.type = 'button';
+btn.className = 'post-fold-btn';
+btn.setAttribute('aria-label', '展开全文继续阅读');
+btn.textContent = '\u9605\u8bfb\u5269\u4f59 ' + remainRatio + '%';
+wrap.appendChild(btn);
+btn.addEventListener('click', expand);
+const catalog = document.querySelector('.catalog-directory');
+if (catalog) {
+catalog.addEventListener('click', (e) => {
+if (expanded || !wrap.classList.contains('post-fold')) return;
+const a = e.target.closest('a[href^="#"]');
+if (!a) return;
+const id = decodeURIComponent(a.getAttribute('href').slice(1));
+const target = id ? document.getElementById(id) : null;
+if (target && target.offsetTop > foldHeight) {
+e.preventDefault();
+expand();
+setTimeout(() => { try { document.getElementById(id).scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (err) { } }, 60);
+}
+});
+}
 };
-
+const expand = () => {
+if (expanded) return;
+expanded = true;
+if (wrap) wrap.classList.remove('post-fold');
+if (window.fitSidebarToContent) setTimeout(window.fitSidebarToContent, 60);
+};
+const recalcFoldHeight = () => {
+const next = getFoldHeight();
+if (next === foldHeight) return;
+foldHeight = next;
+if (expanded || !wrap || !wrap.classList.contains('post-fold')) return;
+const fullHeight = content.scrollHeight;
+if (Math.round((fullHeight - foldHeight) / fullHeight * 100) < minRatio) {
+expand();
+return;
+}
+wrap.style.setProperty('--lt-fold-height', foldHeight + 'px');
+};
+if (window.matchMedia) {
+const mq = window.matchMedia('(max-width: 767px)');
+const handler = () => recalcFoldHeight();
+if (mq.addEventListener) mq.addEventListener('change', handler);
+else if (mq.addListener) mq.addListener(handler);
+}
+let foldResizeTimer = null;
+window.addEventListener('resize', () => {
+if (foldResizeTimer) clearTimeout(foldResizeTimer);
+foldResizeTimer = setTimeout(recalcFoldHeight, 150);
+});
+content.setAttribute('data-fold-bound', '1');
+maybeFold();
+window.addEventListener('load', maybeFold);
+};
 proto.initPoster = function () {
-		const btn = document.getElementById('sharePosterBtn');
-		const bg = document.getElementById('background-layer');
-		const popupBody = document.getElementById('popup-body');
-		if (!btn || !bg || !popupBody) return;
-		// Esc 关闭弹窗
-		document.addEventListener('keydown', (e) => {
-			if (e.key === 'Escape' && bg.style.display === 'flex') this.closePosterLayer(bg);
-		});
-		btn.addEventListener('click', async (e) => {
-			e.preventDefault();
-			if (btn.classList.contains('poster-loading')) return;
-			const token = (this._posterSession = (this._posterSession || 0) + 1);
-			const labelEl = btn.querySelector('span');
-			const labelTxt = labelEl ? String(labelEl.textContent || '') : '';
-			btn.classList.add('poster-loading');
-			btn.disabled = true;
-			if (labelEl) labelEl.textContent = '\u751f\u6210\u4e2d\u2026';
-			try {
-				const og = document.querySelector('meta[property="og:image"]');
-				const titleEl = document.querySelector('.post-title');
-				const title = titleEl ? String(titleEl.textContent || '').replace(/\s+/g, ' ').trim() : String(document.title || '');
-				let coverImg = null;
-				// 封面优先级：服务端标识（theme:poster_cover=0 表示无封面）→ 路径兜底（blog_bg.jpg 兼容旧缓存）
-				// 无封面时跳过 og:image，继续尝试正文首图 → 再无则随机封面
-				const coverFlagEl = document.querySelector('meta[name="theme:poster_cover"]');
-				const coverIsDefault = (coverFlagEl && coverFlagEl.content === '0')
-					|| (!coverFlagEl && og && og.content && /blog_bg\.jpg/i.test(String(og.content).trim()));
-				if (og && og.content && !coverIsDefault) {
-					coverImg = await this.loadPosterCover(og.content);
-				}
-			if (!coverImg) {
-				const imgs = document.querySelectorAll('#post-content img');
-				for (const im of imgs) {
-					const src = im.getAttribute('data-src') || im.currentSrc || im.src || '';
-					if (!src) continue;
-					coverImg = await this.loadPosterCover(new URL(src, window.location.href).href);
-					if (coverImg) break;
-				}
-			}
-			if (!coverImg) coverImg = await this.loadPosterCover(this.fallbackCover(title));
-			const header = document.querySelector('#background-layer .popup-header');
-			if (header) header.style.display = 'none';
-			const logoImg = await this.loadLogoCover(this.getLogoUrl());
-			// 海报二维码依赖 QRCode 库：懒加载（失败不阻断海报生成，仅无二维码）
-			try { await _ltLoadQrcode(); } catch (err) { /* 忽略：renderPoster 内部有 typeof QRCode 防御 */ }
-			let dataUrl = this.renderPoster(coverImg, logoImg);
-			if (!dataUrl) {
-				// 跨域封面导致画布污染：改用内嵌随机封面重绘
-				const fbImg = await this.loadPosterCover(this.fallbackCover(title));
-				dataUrl = this.renderPoster(fbImg, logoImg);
-			}
-			if (!dataUrl) { if (token === this._posterSession) this.renderPosterError(bg, popupBody); return; }
-			// 生成期间被关闭（Esc/遮罩/×）则不再弹开
-			if (token !== this._posterSession) return;
-			popupBody.textContent = '';
-			const wrap = document.createElement('div');
-			wrap.className = 'poster-popup';
-			const img = document.createElement('img');
-			img.src = dataUrl;
-			img.alt = '文章海报';
-			const actions = document.createElement('div');
-			actions.className = 'poster-actions';
-			const dl = document.createElement('a');
-			dl.className = 'poster-download';
-			dl.href = dataUrl;
-			dl.download = 'poster-' + Date.now() + '.png';
-			dl.textContent = '\u2193\u4e0b\u8f7d';
-			// iOS Safari 不支持 a[download]：改为新标签打开海报（可长按保存）
-			if (/iPad|iPhone|iPod/i.test(navigator.userAgent || '')) {
-				dl.removeAttribute('download');
-				dl.textContent = '\u2193\u4fdd\u5b58';
-				dl.addEventListener('click', (ev) => {
-					ev.preventDefault();
-					window.open(dataUrl, '_blank');
-				});
-			}
-			const close = document.createElement('button');
-			close.type = 'button';
-			close.className = 'poster-close';
-			close.textContent = '\u00d7\u5173\u95ed';
-			close.addEventListener('click', () => {
-				this.closePosterLayer(bg);
-			});
-			actions.appendChild(dl);
-			actions.appendChild(close);
-			wrap.appendChild(img);
-			wrap.appendChild(actions);
-			popupBody.appendChild(wrap);
-			this.openPosterLayer(bg, dl);
-			} catch (err) {
-				if (token === this._posterSession) this.renderPosterError(bg, popupBody);
-			} finally {
-				btn.classList.remove('poster-loading');
-				btn.disabled = false;
-				if (labelEl) labelEl.textContent = labelTxt;
-			}
-		});
+const btn = document.getElementById('sharePosterBtn');
+const bg = document.getElementById('background-layer');
+const popupBody = document.getElementById('popup-body');
+if (!btn || !bg || !popupBody) return;
+document.addEventListener('keydown', (e) => {
+if (e.key === 'Escape' && bg.style.display === 'flex' && bg.getAttribute('data-popup-owner') === 'poster') this.closePosterLayer(bg);
+});
+btn.addEventListener('click', async (e) => {
+e.preventDefault();
+if (btn.classList.contains('poster-loading')) return;
+const token = (this._posterSession = (this._posterSession || 0) + 1);
+const labelEl = btn.querySelector('span');
+const labelTxt = labelEl ? String(labelEl.textContent || '') : '';
+btn.classList.add('poster-loading');
+btn.disabled = true;
+if (labelEl) labelEl.textContent = '\u751f\u6210\u4e2d\u2026';
+try {
+const og = document.querySelector('meta[property="og:image"]');
+const titleEl = document.querySelector('.post-title');
+const title = titleEl ? String(titleEl.textContent || '').replace(/\s+/g, ' ').trim() : String(document.title || '');
+let coverImg = null;
+const coverFlagEl = document.querySelector('meta[name="theme:poster_cover"]');
+const coverIsDefault = (coverFlagEl && coverFlagEl.content === '0')
+|| (!coverFlagEl && og && og.content && /(blog_bg\.jpg|default-cover\.(?:avif|webp))/i.test(String(og.content).trim()));
+if (og && og.content && !coverIsDefault) {
+coverImg = await this.loadPosterCover(og.content);
+}
+if (!coverImg) {
+const imgs = document.querySelectorAll('#post-content img');
+for (const im of imgs) {
+const src = im.getAttribute('data-src') || im.currentSrc || im.src || '';
+if (!src) continue;
+coverImg = await this.loadPosterCover(new URL(src, window.location.href).href);
+if (coverImg) break;
+}
+}
+if (!coverImg) coverImg = await this.loadPosterCover(this.fallbackCover(title));
+const header = document.querySelector('#background-layer .popup-header');
+if (header) header.style.display = 'none';
+const logoImg = await this.loadLogoCover(this.getLogoUrl());
+try { await _ltLoadQrcode(); } catch (err) { }
+let dataUrl = this.renderPoster(coverImg, logoImg);
+if (!dataUrl) {
+const fbImg = await this.loadPosterCover(this.fallbackCover(title));
+dataUrl = this.renderPoster(fbImg, logoImg);
+}
+if (!dataUrl) { if (token === this._posterSession) this.renderPosterError(bg, popupBody); return; }
+if (token !== this._posterSession) return;
+popupBody.textContent = '';
+const wrap = document.createElement('div');
+wrap.className = 'poster-popup';
+const img = document.createElement('img');
+img.src = dataUrl;
+img.alt = '文章海报';
+const actions = document.createElement('div');
+actions.className = 'poster-actions';
+const dl = document.createElement('a');
+dl.className = 'poster-download';
+dl.href = dataUrl;
+dl.download = 'poster-' + Date.now() + '.png';
+dl.textContent = '\u2193\u4e0b\u8f7d';
+if (/iPad|iPhone|iPod/i.test(navigator.userAgent || '')) {
+dl.removeAttribute('download');
+dl.textContent = '\u2193\u4fdd\u5b58';
+dl.addEventListener('click', (ev) => {
+ev.preventDefault();
+window.open(dataUrl, '_blank');
+});
+}
+const close = document.createElement('button');
+close.type = 'button';
+close.className = 'poster-close';
+close.textContent = '\u00d7\u5173\u95ed';
+close.addEventListener('click', () => {
+this.closePosterLayer(bg);
+});
+actions.appendChild(dl);
+actions.appendChild(close);
+wrap.appendChild(img);
+wrap.appendChild(actions);
+popupBody.appendChild(wrap);
+this.openPosterLayer(bg, dl, 'poster');
+} catch (err) {
+if (token === this._posterSession) this.renderPosterError(bg, popupBody);
+} finally {
+btn.classList.remove('poster-loading');
+btn.disabled = false;
+if (labelEl) labelEl.textContent = labelTxt;
+}
+});
 };
-
 proto.renderPosterError = function (bg, popupBody) {
-		if (!bg || !popupBody) return;
-		popupBody.textContent = '';
-		const wrap = document.createElement('div');
-		wrap.className = 'poster-popup poster-error';
-		const msg = document.createElement('p');
-		msg.className = 'poster-error-msg';
-		msg.textContent = '\u6d77\u62a5\u751f\u6210\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5';
-		const close = document.createElement('button');
-		close.type = 'button';
-		close.className = 'poster-close';
-		close.textContent = '\u00d7\u5173\u95ed';
-		close.addEventListener('click', () => {
-			this.closePosterLayer(bg);
-		});
-		wrap.appendChild(msg);
-		wrap.appendChild(close);
-		popupBody.appendChild(wrap);
-		this.openPosterLayer(bg, close);
+if (!bg || !popupBody) return;
+popupBody.textContent = '';
+const wrap = document.createElement('div');
+wrap.className = 'poster-popup poster-error';
+const msg = document.createElement('p');
+msg.className = 'poster-error-msg';
+msg.textContent = '\u6d77\u62a5\u751f\u6210\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5';
+const close = document.createElement('button');
+close.type = 'button';
+close.className = 'poster-close';
+close.textContent = '\u00d7\u5173\u95ed';
+close.addEventListener('click', () => {
+this.closePosterLayer(bg);
+});
+wrap.appendChild(msg);
+wrap.appendChild(close);
+popupBody.appendChild(wrap);
+this.openPosterLayer(bg, close, 'poster');
 };
-
-proto.openPosterLayer = function (bg, focusEl) {
-		if (!bg) return;
-		document.body.classList.add('poster-lock-scroll');
-		bg.style.display = 'flex';
-		bg.style.opacity = '0';
-		cancelAnimationFrame(this._posterRAF);
-		this._posterRAF = requestAnimationFrame(() => {
-			this._posterRAF = requestAnimationFrame(() => { bg.style.opacity = '1'; });
-		});
-		if (focusEl && focusEl.focus) {
-			try { focusEl.focus({ preventScroll: true }); } catch (err) { }
-		}
+proto.openPosterLayer = function (bg, focusEl, owner) {
+if (!bg) return;
+if (this._posterCloseTimer) {
+clearTimeout(this._posterCloseTimer);
+this._posterCloseTimer = null;
+}
+bg.setAttribute('data-popup-owner', owner || '');
+document.body.classList.add('poster-lock-scroll');
+bg.style.display = 'flex';
+bg.style.opacity = '0';
+cancelAnimationFrame(this._posterRAF);
+this._posterRAF = requestAnimationFrame(() => {
+this._posterRAF = requestAnimationFrame(() => { bg.style.opacity = '1'; });
+});
+if (focusEl && focusEl.focus) {
+try { focusEl.focus({ preventScroll: true }); } catch (err) { }
+}
 };
-
 proto.closePosterLayer = function (bg, focusEl) {
-		if (!bg) return;
-		document.body.classList.remove('poster-lock-scroll');
-		if (bg.style.display !== 'flex') return;
-		// 会话令牌失效：生成中的异步完成后不再弹开弹窗（Esc/遮罩/× 关闭均触发）
-		this._posterSession = (this._posterSession || 0) + 1;
-		bg.style.opacity = '0';
-		clearTimeout(this._posterCloseTimer);
-		this._posterCloseTimer = setTimeout(() => { bg.style.display = 'none'; }, 200);
-		// 清空弹层内容（:has(.poster-popup) 依赖，保证 popup-header 恢复显示）
-		const popupBody = document.getElementById('popup-body');
-		if (popupBody) popupBody.textContent = '';
-		// 恢复 popup-header 内联样式（JS 兜底隐藏的残留，避免打赏弹窗 × 消失）
-		const hd = document.querySelector('#background-layer .popup-header');
-		if (hd) hd.style.display = '';
-		// 焦点还原（优先调用方指定元素，默认回生成海报按钮）
-		const btn = focusEl || document.getElementById('sharePosterBtn');
-		if (btn && btn.focus) {
-			try { btn.focus({ preventScroll: true }); } catch (err) { }
-		}
+if (!bg) return;
+document.body.classList.remove('poster-lock-scroll');
+if (bg.style.display !== 'flex') return;
+bg.removeAttribute('data-popup-owner');
+this._posterSession = (this._posterSession || 0) + 1;
+bg.style.opacity = '0';
+clearTimeout(this._posterCloseTimer);
+this._posterCloseTimer = setTimeout(() => { bg.style.display = 'none'; }, 200);
+const popupBody = document.getElementById('popup-body');
+if (popupBody) popupBody.textContent = '';
+const hd = document.querySelector('#background-layer .popup-header');
+if (hd) hd.style.display = '';
+const btn = focusEl || document.getElementById('sharePosterBtn');
+if (btn && btn.focus) {
+try { btn.focus({ preventScroll: true }); } catch (err) { }
+}
 };
-
 proto.proxyUrl = function (url) {
-		try {
-			const u = new URL(url, window.location.href);
-			if (u.origin !== window.location.origin) {
-				const themeUrl = (window.LANTERTOWN_CONFIG && window.LANTERTOWN_CONFIG.THEME_URL)
-					? String(window.LANTERTOWN_CONFIG.THEME_URL)
-					: '/usr/themes/LanternPress/';
-				return window.location.origin + themeUrl + 'inc/poster-proxy.php?url=' + encodeURIComponent(u.href);
-			}
-		} catch (err) { }
-		return url;
+try {
+const u = new URL(url, window.location.href);
+if (u.origin !== window.location.origin) {
+const themeUrl = (window.LANTERTOWN_CONFIG && window.LANTERTOWN_CONFIG.THEME_URL)
+? String(window.LANTERTOWN_CONFIG.THEME_URL)
+: '/usr/themes/LanternPress/';
+return window.location.origin + themeUrl + 'inc/poster-proxy.php?url=' + encodeURIComponent(u.href);
+}
+} catch (err) { }
+return url;
 };
-
 proto.loadCover = function (url, minSize) {
-		return new Promise((resolve) => {
-			if (!url) { resolve(null); return; }
-			const img = new Image();
-			let settled = false;
-			const fin = (v) => { if (!settled) { settled = true; clearTimeout(timer); resolve(v); } };
-			const ok = () => fin((img.naturalWidth >= minSize && img.naturalHeight >= minSize) ? img : null);
-			const timer = setTimeout(() => {
-				if (window.console && console.warn) console.warn('[poster] cover load timeout:', url);
-				fin(null);
-			}, 10000);
-			// 图床已配置 CORS（ACAO）时 crossOrigin 直连可导出；
-			// 直连失败（图床未配 ACAO 被 CORS 拦截）→ 主题代理兜底（同域加载可绘制导出）
-			img.crossOrigin = 'anonymous';
-			img.onload = ok;
-			img.onerror = () => {
-				img.onload = null;
-				img.onerror = null;
-				const p = this.proxyUrl(url);
-				if (p !== url) {
-					img.removeAttribute('crossorigin');
-					img.src = p;
-					img.onload = ok;
-					img.onerror = () => {
-						if (window.console && console.warn) console.warn('[poster] cover load failed (proxy):', p);
-						fin(null);
-					};
-				} else {
-					if (window.console && console.warn) console.warn('[poster] cover load failed:', url);
-					fin(null);
-				}
-			};
-			img.src = url;
-		});
+return new Promise((resolve) => {
+if (!url) { resolve(null); return; }
+const img = new Image();
+let settled = false;
+const fin = (v) => { if (!settled) { settled = true; clearTimeout(timer); resolve(v); } };
+const ok = () => fin((img.naturalWidth >= minSize && img.naturalHeight >= minSize) ? img : null);
+const timer = setTimeout(() => {
+if (window.console && console.warn) console.warn('[poster] cover load timeout:', url);
+fin(null);
+}, 10000);
+img.crossOrigin = 'anonymous';
+img.onload = ok;
+img.onerror = () => {
+img.onload = null;
+img.onerror = null;
+const p = this.proxyUrl(url);
+if (p !== url) {
+img.removeAttribute('crossorigin');
+img.src = p;
+img.onload = ok;
+img.onerror = () => {
+if (window.console && console.warn) console.warn('[poster] cover load failed (proxy):', p);
+fin(null);
 };
-
+} else {
+if (window.console && console.warn) console.warn('[poster] cover load failed:', url);
+fin(null);
+}
+};
+img.src = url;
+});
+};
 proto.loadPosterCover = function (url) {
-		return this.loadCover(url, 100);
+return this.loadCover(url, 100);
 };
-
 proto.getLogoUrl = function () {
-		let url = '';
-		// ① 后台「海报 LOGO 地址」配置（最高优先，海报专用）
-		if (window.LANTERTOWN_CONFIG && window.LANTERTOWN_CONFIG.POSTER_LOGO) {
-			url = String(window.LANTERTOWN_CONFIG.POSTER_LOGO).trim();
-		}
-		// ② 页面实际渲染的 LOGO（导航栏 logo 图）
-		if (!url) {
-			const logoEl = document.querySelector('.navbar-logo img.logo');
-			if (logoEl) url = logoEl.getAttribute('data-src') || logoEl.currentSrc || logoEl.src || '';
-		}
-		// ③ 主题配置 THEME_LOGO
-		if (!url && window.LANTERTOWN_CONFIG && window.LANTERTOWN_CONFIG.THEME_LOGO) {
-			url = String(window.LANTERTOWN_CONFIG.THEME_LOGO).trim();
-		}
-		// ④ JSON-LD publisher.logo / logo
-		if (!url) {
-			try {
-				const nodes = document.querySelectorAll('script[type="application/ld+json"]');
-				for (const s of nodes) {
-					const data = JSON.parse(s.textContent || '{}');
-					const lu = (data && data.publisher && data.publisher.logo && data.publisher.logo.url) || (data && data.logo && data.logo.url);
-					if (lu) { url = String(lu); break; }
-				}
-			} catch (err) { }
-		}
-		return url ? new URL(url, window.location.href).href : '';
+let url = '';
+if (window.LANTERTOWN_CONFIG && window.LANTERTOWN_CONFIG.POSTER_LOGO) {
+url = String(window.LANTERTOWN_CONFIG.POSTER_LOGO).trim();
+}
+if (!url) {
+const logoEl = document.querySelector('.navbar-logo img.logo');
+if (logoEl) url = logoEl.getAttribute('data-src') || logoEl.currentSrc || logoEl.src || '';
+}
+if (!url && window.LANTERTOWN_CONFIG && window.LANTERTOWN_CONFIG.THEME_LOGO) {
+url = String(window.LANTERTOWN_CONFIG.THEME_LOGO).trim();
+}
+if (!url) {
+try {
+const nodes = document.querySelectorAll('script[type="application/ld+json"]');
+for (const s of nodes) {
+const data = JSON.parse(s.textContent || '{}');
+const lu = (data && data.publisher && data.publisher.logo && data.publisher.logo.url) || (data && data.logo && data.logo.url);
+if (lu) { url = String(lu); break; }
+}
+} catch (err) { }
+}
+return url ? new URL(url, window.location.href).href : '';
 };
-
 proto.loadLogoCover = function (url) {
-		return this.loadCover(url, 16);
+return this.loadCover(url, 16);
 };
-
 proto.fallbackCover = function (title) {
-		const covers = [
-			'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22750%22%20height%3D%22450%22%20viewBox%3D%220%200%20750%20450%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22a%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%234a90d9%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23cfe8f7%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22750%22%20height%3D%22450%22%20fill%3D%22url%28%23a%29%22%2F%3E%3Cpath%20d%3D%22M0%2C450%20L120%2C190%20L260%2C340%20L380%2C150%20L520%2C330%20L640%2C210%20L750%2C320%20L750%2C450%20Z%22%20fill%3D%22%233a5f8a%22%2F%3E%3Cpath%20d%3D%22M380%2C150%20L470%2C280%20L290%2C280%20Z%22%20fill%3D%22%23ffffff%22%2F%3E%3Cpath%20d%3D%22M240%2C450%20L420%2C120%20L600%2C450%20Z%22%20fill%3D%22%232c4a6e%22%2F%3E%3Cpath%20d%3D%22M420%2C120%20L500%2C260%20L340%2C260%20Z%22%20fill%3D%22%23f0f6ff%22%2F%3E%3Cpolygon%20points%3D%22640%2C330%20628%2C358%20652%2C358%22%20fill%3D%22%232d6a4f%22%2F%3E%3Cpolygon%20points%3D%22640%2C338%20630%2C362%20650%2C362%22%20fill%3D%22%231b4332%22%2F%3E%3Ccircle%20cx%3D%22640%22%20cy%3D%22330%22%20r%3D%227%22%20fill%3D%22%232d6a4f%22%2F%3E%3Ccircle%20cx%3D%22560%22%20cy%3D%22282%22%20r%3D%225%22%20fill%3D%22%23cc493d%22%2F%3E%3Cline%20x1%3D%22560%22%20y1%3D%22287%22%20x2%3D%22560%22%20y2%3D%22304%22%20stroke%3D%22%23333%22%20stroke-width%3D%223%22%2F%3E%3C%2Fsvg%3E',
-			'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22750%22%20height%3D%22450%22%20viewBox%3D%220%200%20750%20450%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22b%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%230f766e%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2399f6e4%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22750%22%20height%3D%22450%22%20fill%3D%22url%28%23b%29%22%2F%3E%3Ccircle%20cx%3D%22120%22%20cy%3D%22120%22%20r%3D%2270%22%20fill%3D%22rgba%28255%2C255%2C255%2C0.18%29%22%2F%3E%3Ccircle%20cx%3D%22650%22%20cy%3D%2290%22%20r%3D%2246%22%20fill%3D%22rgba%28255%2C255%2C255%2C0.14%29%22%2F%3E%3Cpath%20d%3D%22M0%2C340%20Q120%2C270%20240%2C340%20T480%2C340%20T720%2C340%20L720%2C450%20L0%2C450%20Z%22%20fill%3D%22%23115e59%22%2F%3E%3Cpath%20d%3D%22M0%2C400%20Q150%2C330%20320%2C400%20T640%2C400%20L640%2C450%20L0%2C450%20Z%22%20fill%3D%22%23134e4a%22%2F%3E%3Cpolygon%20points%3D%22380%2C250%20420%2C180%20460%2C250%22%20fill%3D%22%23d1fae5%22%2F%3E%3C%2Fsvg%3E',
-			'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22750%22%20height%3D%22450%22%20viewBox%3D%220%200%20750%20450%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22c%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%235b21b6%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23c4b5fd%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22750%22%20height%3D%22450%22%20fill%3D%22url%28%23c%29%22%2F%3E%3Cpolygon%20points%3D%220%2C450%20200%2C120%20400%2C450%22%20fill%3D%22rgba%28255%2C255%2C255%2C0.16%29%22%2F%3E%3Cpolygon%20points%3D%22280%2C450%20470%2C90%20660%2C450%22%20fill%3D%22rgba%28255%2C255%2C255%2C0.22%29%22%2F%3E%3Cpolygon%20points%3D%22520%2C450%20660%2C220%20750%2C340%20750%2C450%22%20fill%3D%22rgba%2830%2C10%2C80%2C0.35%29%22%2F%3E%3Ccircle%20cx%3D%22560%22%20cy%3D%22150%22%20r%3D%2226%22%20fill%3D%22%23fde68a%22%2F%3E%3C%2Fsvg%3E',
-			'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22750%22%20height%3D%22450%22%20viewBox%3D%220%200%20750%20450%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22d%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ea580c%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23fed7aa%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22750%22%20height%3D%22450%22%20fill%3D%22url%28%23d%29%22%2F%3E%3Ccircle%20cx%3D%22560%22%20cy%3D%22130%22%20r%3D%2255%22%20fill%3D%22rgba%28255%2C255%2C255%2C0.35%29%22%2F%3E%3Cpath%20d%3D%22M0%2C380%20Q140%2C300%20300%2C380%20T620%2C380%20L620%2C450%20L0%2C450%20Z%22%20fill%3D%22%239a3412%22%2F%3E%3Cpath%20d%3D%22M0%2C420%20Q180%2C360%20380%2C420%20T760%2C420%20L760%2C450%20L0%2C450%20Z%22%20fill%3D%22%237c2d12%22%2F%3E%3Cpolygon%20points%3D%22180%2C250%20240%2C160%20300%2C250%22%20fill%3D%22%23fff7ed%22%2F%3E%3C%2Fsvg%3E'
-		];
-		let h = 0;
-		const t = String(title || '');
-		for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) % 1000003;
-		return covers[h % covers.length];
+const covers = [
+'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22750%22%20height%3D%22450%22%20viewBox%3D%220%200%20750%20450%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22a%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%234a90d9%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23cfe8f7%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22750%22%20height%3D%22450%22%20fill%3D%22url%28%23a%29%22%2F%3E%3Cpath%20d%3D%22M0%2C450%20L120%2C190%20L260%2C340%20L380%2C150%20L520%2C330%20L640%2C210%20L750%2C320%20L750%2C450%20Z%22%20fill%3D%22%233a5f8a%22%2F%3E%3Cpath%20d%3D%22M380%2C150%20L470%2C280%20L290%2C280%20Z%22%20fill%3D%22%23ffffff%22%2F%3E%3Cpath%20d%3D%22M240%2C450%20L420%2C120%20L600%2C450%20Z%22%20fill%3D%22%232c4a6e%22%2F%3E%3Cpath%20d%3D%22M420%2C120%20L500%2C260%20L340%2C260%20Z%22%20fill%3D%22%23f0f6ff%22%2F%3E%3Cpolygon%20points%3D%22640%2C330%20628%2C358%20652%2C358%22%20fill%3D%22%232d6a4f%22%2F%3E%3Cpolygon%20points%3D%22640%2C338%20630%2C362%20650%2C362%22%20fill%3D%22%231b4332%22%2F%3E%3Ccircle%20cx%3D%22640%22%20cy%3D%22330%22%20r%3D%227%22%20fill%3D%22%232d6a4f%22%2F%3E%3Ccircle%20cx%3D%22560%22%20cy%3D%22282%22%20r%3D%225%22%20fill%3D%22%23cc493d%22%2F%3E%3Cline%20x1%3D%22560%22%20y1%3D%22287%22%20x2%3D%22560%22%20y2%3D%22304%22%20stroke%3D%22%23333%22%20stroke-width%3D%223%22%2F%3E%3C%2Fsvg%3E',
+'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22750%22%20height%3D%22450%22%20viewBox%3D%220%200%20750%20450%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22b%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%230f766e%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2399f6e4%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22750%22%20height%3D%22450%22%20fill%3D%22url%28%23b%29%22%2F%3E%3Ccircle%20cx%3D%22120%22%20cy%3D%22120%22%20r%3D%2270%22%20fill%3D%22rgba%28255%2C255%2C255%2C0.18%29%22%2F%3E%3Ccircle%20cx%3D%22650%22%20cy%3D%2290%22%20r%3D%2246%22%20fill%3D%22rgba%28255%2C255%2C255%2C0.14%29%22%2F%3E%3Cpath%20d%3D%22M0%2C340%20Q120%2C270%20240%2C340%20T480%2C340%20T720%2C340%20L720%2C450%20L0%2C450%20Z%22%20fill%3D%22%23115e59%22%2F%3E%3Cpath%20d%3D%22M0%2C400%20Q150%2C330%20320%2C400%20T640%2C400%20L640%2C450%20L0%2C450%20Z%22%20fill%3D%22%23134e4a%22%2F%3E%3Cpolygon%20points%3D%22380%2C250%20420%2C180%20460%2C250%22%20fill%3D%22%23d1fae5%22%2F%3E%3C%2Fsvg%3E',
+'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22750%22%20height%3D%22450%22%20viewBox%3D%220%200%20750%20450%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22c%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%235b21b6%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23c4b5fd%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22750%22%20height%3D%22450%22%20fill%3D%22url%28%23c%29%22%2F%3E%3Cpolygon%20points%3D%220%2C450%20200%2C120%20400%2C450%22%20fill%3D%22rgba%28255%2C255%2C255%2C0.16%29%22%2F%3E%3Cpolygon%20points%3D%22280%2C450%20470%2C90%20660%2C450%22%20fill%3D%22rgba%28255%2C255%2C255%2C0.22%29%22%2F%3E%3Cpolygon%20points%3D%22520%2C450%20660%2C220%20750%2C340%20750%2C450%22%20fill%3D%22rgba%2830%2C10%2C80%2C0.35%29%22%2F%3E%3Ccircle%20cx%3D%22560%22%20cy%3D%22150%22%20r%3D%2226%22%20fill%3D%22%23fde68a%22%2F%3E%3C%2Fsvg%3E',
+'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22750%22%20height%3D%22450%22%20viewBox%3D%220%200%20750%20450%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22d%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ea580c%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23fed7aa%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22750%22%20height%3D%22450%22%20fill%3D%22url%28%23d%29%22%2F%3E%3Ccircle%20cx%3D%22560%22%20cy%3D%22130%22%20r%3D%2255%22%20fill%3D%22rgba%28255%2C255%2C255%2C0.35%29%22%2F%3E%3Cpath%20d%3D%22M0%2C380%20Q140%2C300%20300%2C380%20T620%2C380%20L620%2C450%20L0%2C450%20Z%22%20fill%3D%22%239a3412%22%2F%3E%3Cpath%20d%3D%22M0%2C420%20Q180%2C360%20380%2C420%20T760%2C420%20L760%2C450%20L0%2C450%20Z%22%20fill%3D%22%237c2d12%22%2F%3E%3Cpolygon%20points%3D%22180%2C250%20240%2C160%20300%2C250%22%20fill%3D%22%23fff7ed%22%2F%3E%3C%2Fsvg%3E'
+];
+let h = 0;
+const t = String(title || '');
+for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) % 1000003;
+return covers[h % covers.length];
 };
-
 proto.renderPoster = function (coverImg, logoImg) {
-		const ogSite = document.querySelector('meta[property="og:site_name"]');
-		let siteTitle = (ogSite && ogSite.content) ? String(ogSite.content).trim() : '';
-		if (!siteTitle && window.LANTERTOWN_CONFIG && window.LANTERTOWN_CONFIG.BLOG_TITLE) {
-			siteTitle = String(window.LANTERTOWN_CONFIG.BLOG_TITLE).trim();
-		}
-		if (!siteTitle) {
-			const siteEl = document.querySelector('.logo-text, .site-brand, .site-name, .navbar-brand, .site-title');
-			if (siteEl) siteTitle = String(siteEl.textContent || '').trim();
-		}
-		if (!siteTitle) {
-			const dt = String(document.title || '');
-			const seps = [' - ', ' -', '-', '_', '|'].filter((s) => dt.indexOf(s) > 0);
-			let sepIdx = Infinity;
-			for (const s of seps) sepIdx = Math.min(sepIdx, dt.indexOf(s));
-			siteTitle = sepIdx !== Infinity ? dt.slice(0, sepIdx).trim() : dt;
-		}
-		if (!siteTitle) siteTitle = 'LanternPress';
-		const titleEl = document.querySelector('.post-title');
-		const title = titleEl ? String(titleEl.textContent || '').replace(/\s+/g, ' ').trim() : (document.title || '');
-		const url = window.location.href;
-		let host = '';
-		try { host = new URL(url).hostname; } catch (err) { host = ''; }
-		const hostParts = String(host).split('.').filter(Boolean);
-		let topDomain = '';
-		// IP 地址 / 本机域名整体作为顶级域名（避免 127.0.0.1 → "0.1" 之类错误切片）
-		if (host && (host === 'localhost' || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host))) {
-			topDomain = host;
-		} else {
-			topDomain = hostParts.length >= 2 ? hostParts.slice(-2).join('.') : host;
-		}
-		let author = '';
-		let dateText = '';
-		const metaEl = document.querySelector('.post-meta');
-		if (metaEl) {
-			const a = metaEl.querySelector('a');
-			if (a) author = String(a.textContent || '').trim();
-			// 日期仅在作者链接之后匹配（作者名含"XXXX年X月X日"时避免误取）
-			let metaText = String(metaEl.textContent || '');
-			if (a && author) metaText = metaText.slice(String(a.textContent || '').length);
-			const dm = metaText.match(/\d{4}年\d{1,2}月\d{1,2}日(?:\s*\d{1,2}:\d{2}(?::\d{2})?)?/);
-			if (dm) dateText = dm[0];
-		}
-		const contentEl = document.getElementById('post-content');
-		let summary = '';
-		if (contentEl) {
-			const clone = contentEl.cloneNode(true);
-			// 剔除脚本/样式/代码块/引用/表单/导航/内嵌帧/广告/隐藏元素，以及标题（避免序号与标题词混入摘要）
-			clone.querySelectorAll('script, style, pre, blockquote, form, .post-password-form, nav, iframe, ins.adsbygoogle, .adsbygoogle, [hidden], [style*="display:none"]').forEach((n) => n.remove());
-			clone.querySelectorAll('h1, h2, h3, h4').forEach((n) => n.remove());
-			summary = String(clone.textContent || '').replace(/\s+/g, ' ').trim();
-			// 按 Unicode 码点截断（避免 emoji/代理对被 slice 截半出现乱码）
-			summary = Array.from(summary).slice(0, 150).join('');
-		}
-		const canvas = document.createElement('canvas');
-		const PX = 2; // 导出像素比固定 2x（高清）
-		canvas.width = 750;
-		let ctx = canvas.getContext('2d');
-		// 预分行：标题（bold 32px）与摘要（24px）必须先设对应字体再量宽（量度与绘制字体必须一致），
-		// 行数决定作者/摘要/底部区块/画布高度；超出 maxLines 时末行补省略号
-		const titleX = 30;
-		const titleW = 690;
-		const wrapLines = (text, maxWidth, maxLines) => {
-			const lines = [];
-			let cur = '';
-			let overflow = false;
-			for (const ch of String(text).split('')) {
-				const test = cur + ch;
-				if (ctx.measureText(test).width > maxWidth && cur) {
-					// 超宽时优先回退到最后一个空格处断行（保留英文单词完整）
-					const sp = cur.lastIndexOf(' ');
-					const cut = sp > 0 ? sp : cur.length;
-					lines.push(cur.slice(0, cut));
-					if (lines.length === maxLines) {
-						overflow = true;
-						break;
-					}
-					cur = sp > 0 ? cur.slice(cut + 1) + ch : ch;
-				} else {
-					cur = test;
-				}
-			}
-			if (cur && lines.length < maxLines) lines.push(cur);
-			// 溢出时末行补省略号（截短到可容纳 '…' 的宽度）
-			if (overflow && lines.length) {
-				const ell = '\u2026';
-				let last = lines[lines.length - 1];
-				while (last.length > 0 && ctx.measureText(last + ell).width > maxWidth) {
-					last = last.slice(0, -1);
-				}
-				lines[lines.length - 1] = last + ell;
-			}
-			return lines;
-		};
-		ctx.font = 'bold 32px "PingFang SC","Microsoft YaHei",sans-serif';
-		const titleLines = title ? wrapLines(title, titleW, 2) : [];
-		ctx.font = '24px "PingFang SC","Microsoft YaHei",sans-serif';
-		const summaryLines = summary ? wrapLines(summary, titleW, 6) : [];
-		// 布局坐标：标题/摘要按实际行数自适应；摘要满 6 行时与原版 750×948 画布完全一致
-		const sLH = 36;
-		const infoY = titleLines.length >= 2 ? 562 : 520;
-		const sumY = infoY + 60;
-		const sumBottom = summaryLines.length > 0 ? sumY + (summaryLines.length - 1) * sLH + 4 : sumY - 16;
-		const bottomTop = Math.max(600, sumBottom + 36);
-		const tipY = bottomTop + 132;
-		const qrY = bottomTop - 2;
-		const logH = Math.max(750, qrY + 184 + 10);
-		// 切换到 2x 渲染（重设尺寸会重置上下文，重新获取并整体缩放）
-		canvas.width = 750 * PX;
-		canvas.height = logH * PX;
-		ctx = canvas.getContext('2d');
-		ctx.scale(PX, PX);
-		// 纯白背景
-		ctx.fillStyle = '#ffffff';
-		ctx.fillRect(0, 0, 750, logH);
-		// 顶部封面图（cover 裁剪保持比例；无图时 initPoster 已注入随机封面，此处恒有图，仍兜底）
-		const cover = (coverImg && coverImg.naturalWidth > 0) ? coverImg : null;
-		if (cover) {
-			const iw = cover.naturalWidth, ih = cover.naturalHeight;
-			const tw = 750, th = 422;
-			const sc = Math.max(tw / iw, th / ih);
-			const sw = tw / sc, sh = th / sc;
-			ctx.drawImage(cover, (iw - sw) / 2, (ih - sh) / 2, sw, sh, 0, 0, tw, th);
-		} else {
-			const g = ctx.createLinearGradient(0, 0, 0, 450);
-			g.addColorStop(0, '#9bb8d3');
-			g.addColorStop(1, '#e8f0f7');
-			ctx.fillStyle = g;
-			ctx.fillRect(0, 0, 750, 450);
-		}
-		// 文章标题位于封面图下方白底区（图片与作者+日期栏之间）：深色加粗、最多 2 行
-		if (titleLines.length) {
-			ctx.fillStyle = '#222222';
-			ctx.font = 'bold 32px "PingFang SC","Microsoft YaHei",sans-serif';
-			let ty = 468;
-			for (const ln of titleLines) {
-				ctx.fillText(ln, titleX, ty);
-				ty += 42;
-			}
-		}
-		// 作者（左）+ 日期（右）同行，位于标题下方（白底区深灰）
-		ctx.font = '20px "PingFang SC","Microsoft YaHei",sans-serif';
-		if (author) {
-			// 作者名超宽截断（保留右侧日期空间）
-			const maxAW = 200;
-			let authorText = author;
-			if (ctx.measureText(authorText).width > maxAW) {
-				while (authorText.length > 0 && ctx.measureText(authorText + '\u2026').width > maxAW) {
-					authorText = authorText.slice(0, -1);
-				}
-				authorText += '\u2026';
-			}
-			const avX = titleX + 15, avY = infoY - 12;
-			ctx.fillStyle = '#e0e0e0';
-			ctx.beginPath();
-			ctx.arc(avX, avY, 12, 0, Math.PI * 2);
-			ctx.fill();
-			ctx.fillStyle = '#ffffff';
-			ctx.beginPath();
-			ctx.arc(avX, avY - 4.5, 4, 0, Math.PI * 2);
-			ctx.fill();
-			ctx.beginPath();
-			ctx.arc(avX, avY + 3, 7, 0, Math.PI);
-			ctx.fill();
-			ctx.fillStyle = '#888888';
-			ctx.fillText(authorText, titleX + 40, infoY);
-		}
-		if (dateText) ctx.fillText(dateText, titleX + titleW - ctx.measureText(dateText).width, infoY);
-		// 摘要正文（白底区，最多 6 行，行数决定底部区块位置）
-		if (summaryLines.length) {
-			ctx.fillStyle = '#555555';
-			ctx.font = '24px "PingFang SC","Microsoft YaHei",sans-serif';
-			let sy = sumY;
-			for (const ln of summaryLines) {
-				ctx.fillText(ln, titleX, sy);
-				sy += sLH;
-			}
-		}
-		// 底部：左站点 LOGO（优先）/ 站点名 + 提示、右二维码（摘要行数自适应，紧凑排布）
-		if (logoImg && logoImg.naturalWidth > 0) {
-			// LOGO 等比缩放，区域高 48px（较原 60px 缩小），与提示行整体相对二维码垂直居中
-			const lw = logoImg.naturalWidth, lh = logoImg.naturalHeight;
-			const maxH = 48, maxW = 320;
-			let dlh = maxH, dlw = lw * maxH / lh;
-			if (dlw > maxW) { dlw = maxW; dlh = lh * maxW / lw; }
-			const ly = bottomTop + 44 + (48 - dlh) / 2;
-			ctx.drawImage(logoImg, 30, ly, dlw, dlh);
-		} else {
-			ctx.fillStyle = '#222222';
-			ctx.font = 'bold 36px "PingFang SC","Microsoft YaHei",sans-serif';
-			ctx.fillText(String(siteTitle).slice(0, 12), 30, bottomTop + 76);
-		}
-		const tipPrefix = '\u8bc6\u522b\u53f3\u4fa7\u4e8c\u7ef4\u7801\uff0c\u8fdb\u5165';
-		const tipDomain = String(topDomain).toUpperCase();
-		const tipSuffix = '\u9605\u8bfb\u5168\u6587';
-		ctx.fillStyle = '#444444';
-		ctx.font = '20px "PingFang SC","Microsoft YaHei",sans-serif';
-		ctx.fillText(tipPrefix, 30, tipY);
-		const tipPx = 30 + ctx.measureText(tipPrefix).width;
-		// 域名天蓝色加粗
-		ctx.fillStyle = '#38bdf8';
-		ctx.font = 'bold 20px "PingFang SC","Microsoft YaHei",sans-serif';
-		ctx.fillText(tipDomain, tipPx, tipY);
-		const tipDx = tipPx + ctx.measureText(tipDomain).width;
-		ctx.fillStyle = '#444444';
-		ctx.font = '20px "PingFang SC","Microsoft YaHei",sans-serif';
-		ctx.fillText(tipSuffix, tipDx, tipY);
-		try {
-			if (typeof QRCode !== 'undefined') {
-				// 二维码内容优先取 canonical（og:url=文章永久链接，不受当前地址临时参数影响）
-				const qrUrl = (document.querySelector('meta[property="og:url"]') || {}).content || url;
-				const qrBox = document.createElement('div');
-				// 内容 144px，白盒 184px 内四周留 20px（约 4 模块，符合 QR 静区规范，提高扫码成功率）
-				new QRCode(qrBox, { text: qrUrl, width: 144, height: 144, correctLevel: QRCode.CorrectLevel.M });
-				const qrCanvas = qrBox.querySelector('canvas');
-				if (qrCanvas) {
-					// 圆角白盒 + 浅灰描边（美化外边框，位置随底部区块自适应）
-					ctx.fillStyle = '#ffffff';
-					ctx.strokeStyle = '#e5e5e5';
-					ctx.lineWidth = 1.5;
-					if (typeof ctx.roundRect === 'function') {
-						ctx.beginPath();
-						ctx.roundRect(536, qrY, 184, 184, 10);
-						ctx.fill();
-						ctx.stroke();
-					} else {
-						ctx.fillRect(536, qrY, 184, 184);
-						ctx.strokeRect(536, qrY, 184, 184);
-					}
-					ctx.drawImage(qrCanvas, 556, qrY + 20, 144, 144);
-				}
-			}
-		} catch (err) { }
-		try {
-			return canvas.toDataURL('image/png');
-		} catch (err) {
-			// canvas 被跨域图污染，无法导出
-			return null;
-		}
+const ogSite = document.querySelector('meta[property="og:site_name"]');
+let siteTitle = (ogSite && ogSite.content) ? String(ogSite.content).trim() : '';
+if (!siteTitle && window.LANTERTOWN_CONFIG && window.LANTERTOWN_CONFIG.BLOG_TITLE) {
+siteTitle = String(window.LANTERTOWN_CONFIG.BLOG_TITLE).trim();
+}
+if (!siteTitle) {
+const siteEl = document.querySelector('.logo-text, .site-brand, .site-name, .navbar-brand, .site-title');
+if (siteEl) siteTitle = String(siteEl.textContent || '').trim();
+}
+if (!siteTitle) {
+const dt = String(document.title || '');
+const seps = [' - ', ' -', '-', '_', '|'].filter((s) => dt.indexOf(s) > 0);
+let sepIdx = Infinity;
+for (const s of seps) sepIdx = Math.min(sepIdx, dt.indexOf(s));
+siteTitle = sepIdx !== Infinity ? dt.slice(0, sepIdx).trim() : dt;
+}
+if (!siteTitle) siteTitle = 'LanternPress';
+const titleEl = document.querySelector('.post-title');
+const title = titleEl ? String(titleEl.textContent || '').replace(/\s+/g, ' ').trim() : (document.title || '');
+const url = window.location.href;
+let host = '';
+try { host = new URL(url).hostname; } catch (err) { host = ''; }
+const hostParts = String(host).split('.').filter(Boolean);
+let topDomain = '';
+if (host && (host === 'localhost' || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host))) {
+topDomain = host;
+} else {
+topDomain = hostParts.length >= 2 ? hostParts.slice(-2).join('.') : host;
+}
+let author = '';
+let dateText = '';
+const metaEl = document.querySelector('.post-meta');
+if (metaEl) {
+const a = metaEl.querySelector('a');
+if (a) author = String(a.textContent || '').trim();
+let metaText = String(metaEl.textContent || '');
+if (a && author) metaText = metaText.slice(String(a.textContent || '').length);
+const dm = metaText.match(/\d{4}年\d{1,2}月\d{1,2}日(?:\s*\d{1,2}:\d{2}(?::\d{2})?)?/);
+if (dm) dateText = dm[0];
+}
+const contentEl = document.getElementById('post-content');
+let summary = '';
+if (contentEl) {
+const clone = contentEl.cloneNode(true);
+clone.querySelectorAll('script, style, pre, blockquote, form, .post-password-form, nav, iframe, ins.adsbygoogle, .adsbygoogle, [hidden], [style*="display:none"]').forEach((n) => n.remove());
+clone.querySelectorAll('h1, h2, h3, h4').forEach((n) => n.remove());
+summary = String(clone.textContent || '').replace(/\s+/g, ' ').trim();
+summary = Array.from(summary).slice(0, 150).join('');
+}
+const canvas = document.createElement('canvas');
+const PX = 2;
+canvas.width = 750;
+let ctx = canvas.getContext('2d');
+const titleX = 30;
+const titleW = 690;
+const wrapLines = (text, maxWidth, maxLines) => {
+const lines = [];
+let cur = '';
+let overflow = false;
+for (const ch of Array.from(String(text))) {
+const test = cur + ch;
+if (ctx.measureText(test).width > maxWidth && cur) {
+const sp = cur.lastIndexOf(' ');
+const cut = sp > 0 ? sp : cur.length;
+lines.push(cur.slice(0, cut));
+if (lines.length === maxLines) {
+overflow = true;
+break;
+}
+cur = sp > 0 ? cur.slice(cut + 1) + ch : ch;
+} else {
+cur = test;
+}
+}
+if (cur && lines.length < maxLines) lines.push(cur);
+if (overflow && lines.length) {
+const ell = '\u2026';
+let last = lines[lines.length - 1];
+while (last.length > 0 && ctx.measureText(last + ell).width > maxWidth) {
+last = last.slice(0, -1);
+}
+lines[lines.length - 1] = last + ell;
+}
+return lines;
 };
-
-// 手动初始化文章页功能（core 构造已执行全站功能；此处保持与原构造顺序一致）
+ctx.font = 'bold 32px "PingFang SC","Microsoft YaHei",sans-serif';
+const titleLines = title ? wrapLines(title, titleW, 2) : [];
+ctx.font = '24px "PingFang SC","Microsoft YaHei",sans-serif';
+const summaryLines = summary ? wrapLines(summary, titleW, 6) : [];
+const sLH = 36;
+const infoY = titleLines.length >= 2 ? 562 : 520;
+const sumY = infoY + 60;
+const sumBottom = summaryLines.length > 0 ? sumY + (summaryLines.length - 1) * sLH + 4 : sumY - 16;
+const bottomTop = Math.max(600, sumBottom + 36);
+const tipY = bottomTop + 132;
+const qrY = bottomTop - 2;
+const logH = Math.max(750, qrY + 184 + 10);
+canvas.width = 750 * PX;
+canvas.height = logH * PX;
+ctx = canvas.getContext('2d');
+ctx.scale(PX, PX);
+ctx.fillStyle = '#ffffff';
+ctx.fillRect(0, 0, 750, logH);
+const cover = (coverImg && coverImg.naturalWidth > 0) ? coverImg : null;
+if (cover) {
+const iw = cover.naturalWidth, ih = cover.naturalHeight;
+const tw = 750, th = 422;
+const sc = Math.max(tw / iw, th / ih);
+const sw = tw / sc, sh = th / sc;
+ctx.drawImage(cover, (iw - sw) / 2, (ih - sh) / 2, sw, sh, 0, 0, tw, th);
+} else {
+const g = ctx.createLinearGradient(0, 0, 0, 450);
+g.addColorStop(0, '#9bb8d3');
+g.addColorStop(1, '#e8f0f7');
+ctx.fillStyle = g;
+ctx.fillRect(0, 0, 750, 450);
+}
+if (titleLines.length) {
+ctx.fillStyle = '#222222';
+ctx.font = 'bold 32px "PingFang SC","Microsoft YaHei",sans-serif';
+let ty = 468;
+for (const ln of titleLines) {
+ctx.fillText(ln, titleX, ty);
+ty += 42;
+}
+}
+ctx.font = '20px "PingFang SC","Microsoft YaHei",sans-serif';
+if (author) {
+const maxAW = 200;
+let authorText = author;
+if (ctx.measureText(authorText).width > maxAW) {
+while (authorText.length > 0 && ctx.measureText(authorText + '\u2026').width > maxAW) {
+authorText = authorText.slice(0, -1);
+}
+authorText += '\u2026';
+}
+const avX = titleX + 15, avY = infoY - 12;
+ctx.fillStyle = '#e0e0e0';
+ctx.beginPath();
+ctx.arc(avX, avY, 12, 0, Math.PI * 2);
+ctx.fill();
+ctx.fillStyle = '#ffffff';
+ctx.beginPath();
+ctx.arc(avX, avY - 4.5, 4, 0, Math.PI * 2);
+ctx.fill();
+ctx.beginPath();
+ctx.arc(avX, avY + 3, 7, 0, Math.PI);
+ctx.fill();
+ctx.fillStyle = '#888888';
+ctx.fillText(authorText, titleX + 40, infoY);
+}
+if (dateText) ctx.fillText(dateText, titleX + titleW - ctx.measureText(dateText).width, infoY);
+if (summaryLines.length) {
+ctx.fillStyle = '#555555';
+ctx.font = '24px "PingFang SC","Microsoft YaHei",sans-serif';
+let sy = sumY;
+for (const ln of summaryLines) {
+ctx.fillText(ln, titleX, sy);
+sy += sLH;
+}
+}
+if (logoImg && logoImg.naturalWidth > 0) {
+const lw = logoImg.naturalWidth, lh = logoImg.naturalHeight;
+const maxH = 48, maxW = 320;
+let dlh = maxH, dlw = lw * maxH / lh;
+if (dlw > maxW) { dlw = maxW; dlh = lh * maxW / lw; }
+const ly = bottomTop + 44 + (48 - dlh) / 2;
+ctx.drawImage(logoImg, 30, ly, dlw, dlh);
+} else {
+ctx.fillStyle = '#222222';
+ctx.font = 'bold 36px "PingFang SC","Microsoft YaHei",sans-serif';
+ctx.fillText(String(siteTitle).slice(0, 12), 30, bottomTop + 76);
+}
+const tipPrefix = '\u8bc6\u522b\u53f3\u4fa7\u4e8c\u7ef4\u7801\uff0c\u8fdb\u5165';
+const tipDomain = String(topDomain).toUpperCase();
+const tipSuffix = '\u9605\u8bfb\u5168\u6587';
+ctx.fillStyle = '#444444';
+ctx.font = '20px "PingFang SC","Microsoft YaHei",sans-serif';
+ctx.fillText(tipPrefix, 30, tipY);
+const tipPx = 30 + ctx.measureText(tipPrefix).width;
+ctx.fillStyle = '#38bdf8';
+ctx.font = 'bold 20px "PingFang SC","Microsoft YaHei",sans-serif';
+ctx.fillText(tipDomain, tipPx, tipY);
+const tipDx = tipPx + ctx.measureText(tipDomain).width;
+ctx.fillStyle = '#444444';
+ctx.font = '20px "PingFang SC","Microsoft YaHei",sans-serif';
+ctx.fillText(tipSuffix, tipDx, tipY);
+try {
+if (typeof QRCode !== 'undefined') {
+const qrUrl = (document.querySelector('meta[property="og:url"]') || {}).content || url;
+const qrBox = document.createElement('div');
+new QRCode(qrBox, { text: qrUrl, width: 144, height: 144, correctLevel: QRCode.CorrectLevel.M });
+const qrCanvas = qrBox.querySelector('canvas');
+if (qrCanvas) {
+ctx.fillStyle = '#ffffff';
+ctx.strokeStyle = '#e5e5e5';
+ctx.lineWidth = 1.5;
+if (typeof ctx.roundRect === 'function') {
+ctx.beginPath();
+ctx.roundRect(536, qrY, 184, 184, 10);
+ctx.fill();
+ctx.stroke();
+} else {
+ctx.fillRect(536, qrY, 184, 184);
+ctx.strokeRect(536, qrY, 184, 184);
+}
+ctx.drawImage(qrCanvas, 556, qrY + 20, 144, 144);
+}
+}
+} catch (err) { }
+try {
+return canvas.toDataURL('image/png');
+} catch (err) {
+return null;
+}
+};
 const inst = window.LANTERN_INSTANCE;
 if (!inst) { return; }
 inst.initCodeLang && inst.initCodeLang();

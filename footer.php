@@ -11,11 +11,11 @@ $statisticsCode = trim(lt_text($this->options->statisticsCode ?? ''));
 $currentYear = date('Y');
 $siteUrl = rtrim(lt_text($this->options->siteUrl), '/');
 $siteTitle = lt_text($this->options->title ?? '');
-// 文章页/独立页才加载文章页专属脚本（lantern.post.js；微信二维码 qrcode.min.js 已改为首次使用时懒加载）
+
 $ltIsSingleFooter = $this->is('post') || $this->is('page');
 
-$customJsEscaped = $customJs !== '' ? preg_replace('/<\/(script|style)>/i', '<\\/$1>', $customJs) : '';
-$statisticsCodeEscaped = $statisticsCode !== '' ? preg_replace('/<\/(script|style)>/i', '<\\/$1>', $statisticsCode) : '';
+$customJsEscaped = lt_escape_inline_code($customJs);
+$statisticsCodeSafe = lt_safe_ad_html($statisticsCode);
 
 ?>
 </main>
@@ -39,15 +39,15 @@ $statisticsCodeEscaped = $statisticsCode !== '' ? preg_replace('/<\/(script|styl
     </div>
     <button type="button" id="back-to-top" aria-label="<?php echo lt_esc_attr(_t('返回顶部')); ?>"><?php echo lt_icon('backtop'); ?></button>
     <script defer src="<?php $this->options->themeUrl('assets/js/lantern.core.js'); ?>?v=<?php echo lt_esc_attr(LT_ASSET_VERSION); ?>"></script>
-    <!-- AVIF 降级已随 lantern.core.js 统一管理（initAvifFallback） -->
+    
 <?php if ($ltIsSingleFooter): ?>
         <script defer src="<?php $this->options->themeUrl('assets/js/lantern.post.js'); ?>?v=<?php echo lt_esc_attr(LT_ASSET_VERSION); ?>"></script>
 <?php endif; ?>
 <?php if ($customJsEscaped !== ''): ?>
-        <script><?php echo $customJsEscaped; ?></script>
+        <script nonce="<?php echo lt_esc_attr(lt_generate_csp_nonce()); ?>"><?php echo $customJsEscaped; ?></script>
 <?php endif; ?>
-<?php if ($statisticsCodeEscaped !== ''): ?>
-<?php echo $statisticsCodeEscaped . "\n"; ?>
+<?php if ($statisticsCodeSafe !== ''): ?>
+<?php echo lt_add_nonce_to_scripts($statisticsCodeSafe, lt_generate_csp_nonce()) . "\n"; ?>
 <?php endif; ?>
 <?php $this->footer(); ?>
 </footer>

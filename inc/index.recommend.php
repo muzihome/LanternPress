@@ -19,7 +19,8 @@ if (!defined('__TYPECHO_ROOT_DIR__')) exit;
             $db = \Typecho\Db::get();
 
             $rows = $db->fetchAll(
-                $db->select()
+                
+                $db->select('cid', 'title', 'slug', 'created', 'modified', 'text', 'authorId', 'template', 'type', 'status', 'password')
                     ->from('table.contents')
                     ->where('type = ?', 'post')
                     ->where('status = ?', 'publish')
@@ -66,7 +67,7 @@ if (!defined('__TYPECHO_ROOT_DIR__')) exit;
                 $cid = (int) $row['cid'];
                 $fields = $fieldMap[$cid] ?? [];
 
-                // 统一走 loadThumb 选择链：banner → indexThumbs → 正文首图 → 默认图（与列表页/文章页一致）
+                
                 $thumb = loadThumb(lt_text($row['text'] ?? ''), $this->options, $cid, trim(lt_text($fields['bannerUrl'] ?? '')));
 
                 $desc = trim(lt_text($fields['articleDesc'] ?? ''));

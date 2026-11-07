@@ -40,7 +40,9 @@ function threadedComments(object $comments, object $options): void
                             <em><?php _e('（审核后可见）'); ?></em>
 <?php endif; ?>
                         <time class="comment-time"><?php $comments->date('M j, Y'); ?></time>
-                        <span class="comment-reply"><?php $comments->reply(_t('回复')); ?></span>
+                        <span class="comment-reply">
+                            <a href="javascript:void(0);" class="comment-reply-link" data-cid="<?php $comments->theId(); ?>" data-coid="<?php echo (int) $comments->coid; ?>" data-no-instant><?php _e('回复'); ?></a>
+                        </span>
                     </div>
                     <div class="comment-content">
 <?php echo getReply((int) $comments->parent, lt_text($comments->content)) . "\n"; ?>
@@ -59,6 +61,7 @@ function threadedComments(object $comments, object $options): void
 <div class="comment-container">
     <div id="comments" class="clearfix">
 <?php $this->comments()->to($comments); ?>
+<?php ?>
 <?php if ($this->allow('comment')): ?>
             <div id="<?php $this->respondId(); ?>" class="respond" data-respondId="<?php $this->respondId() ?>">
                 <h2 class="response">
@@ -71,7 +74,7 @@ function threadedComments(object $comments, object $options): void
                             ); echo "\n"; ?>
                             <a href="<?php $this->options->logoutUrl(); ?>" title="<?php echo lt_esc_attr(_t('退出登录')); ?>" data-no-instant><?php _e('退出登录'); ?></a>
 <?php endif; ?>
-<?php $comments->cancelReply(_t(' 取消回复')); echo "\n"; ?>
+                        <a id="cancel-comment-reply-link" class="cancel-comment-reply-link" href="javascript:void(0);" data-no-instant style="display:none;"><?php _e(' 取消回复'); ?></a><?php echo "\n"; ?>
                     </span>
                 </h2>
                 <form method="post" action="<?php $this->commentUrl() ?>" id="comment-form" class="comment-form" role="form">
@@ -92,24 +95,41 @@ function threadedComments(object $comments, object $options): void
             <span class="response"><?php _e('评论已关闭'); ?></span>
 <?php endif; ?>
 
-<?php if ($comments->have()): ?>
-<?php $comments->listComments(); echo "\n"; ?>
-            <div class="comment-list-tail-spacer"></div>
-<?php $comments->pageNav(
-                lt_icon('left'),
-                lt_icon('right'),
-                1,
-                '...',
-                [
-                    'wrapTag' => 'ul',
-                    'wrapClass' => 'pagination-container',
-                    'itemTag' => 'li',
-                    'textTag' => 'a',
-                    'currentClass' => 'active',
-                    'prevClass' => 'prev',
-                    'nextClass' => 'next'
-                ]
-            ); echo "\n"; ?>
+<?php 
+            
+            $ltCommentCid = (int) $this->cid;
+            $ltCommentPage = (int) \Typecho\Request::getInstance()->get('commentPage', 0);
+            $ltCommentKey = 'list-' . $ltCommentCid . '-' . lt_comment_list_ver($ltCommentCid) . '-p' . $ltCommentPage;
+            $ltCommentList = lt_cache_remember('comment', $ltCommentKey, 300, static function () use ($comments, $ltCommentCid): string {
+                if (!$comments->have()) {
+                    return '';
+                }
+                
+                $GLOBALS['lt_comment_parent_map'] = lt_comment_parent_map($ltCommentCid);
+                ob_start();
+                $comments->listComments();
+                echo "\n";
+                echo '<div class="comment-list-tail-spacer"></div>';
+                $comments->pageNav(
+                    lt_icon('left'),
+                    lt_icon('right'),
+                    1,
+                    '...',
+                    [
+                        'wrapTag' => 'ul',
+                        'wrapClass' => 'pagination-container',
+                        'itemTag' => 'li',
+                        'textTag' => 'a',
+                        'currentClass' => 'active',
+                        'prevClass' => 'prev',
+                        'nextClass' => 'next'
+                    ]
+                );
+                echo "\n";
+                return (string) ob_get_clean();
+            });
+            if ($ltCommentList !== ''): ?>
+<?php echo $ltCommentList; ?>
 <?php endif; ?>
     </div>
 </div>

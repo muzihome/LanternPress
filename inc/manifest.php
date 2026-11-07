@@ -3,6 +3,20 @@ declare(strict_types=1);
 
 
 
+
+
+$ltStaticManifest = dirname(__DIR__) . '/cache/manifest.json';
+if (is_file($ltStaticManifest) && (time() - (int) @filemtime($ltStaticManifest)) < 604800) {
+    $ltCachedManifest = @file_get_contents($ltStaticManifest);
+    if (is_string($ltCachedManifest) && $ltCachedManifest !== '' && $ltCachedManifest[0] === '{') {
+        header('Content-Type: application/manifest+json; charset=UTF-8');
+        header('X-Content-Type-Options: nosniff');
+        header('Cache-Control: public, max-age=3600');
+        echo $ltCachedManifest;
+        exit;
+    }
+}
+
 ob_start();
 
 
@@ -13,7 +27,7 @@ ob_start();
 
 
 if (!defined('__TYPECHO_ROOT_DIR__')) {
-    // 逐级上溯探测 Typecho 根目录（config.inc.php 所在），兼容子目录/多级部署
+    
     $ltProbe = __DIR__;
     for ($i = 0; $i < 6; $i++) {
         $ltProbe = dirname($ltProbe);
@@ -80,7 +94,8 @@ try {
         }
     }
 } catch (\Throwable $e) {
-
+    
+    error_log('[LanternPress] manifest build failed | ' . get_class($e) . ': ' . $e->getMessage());
 }
 
 
@@ -93,7 +108,24 @@ while (ob_get_level() > 0) {
     ob_end_clean();
 }
 
-echo json_encode(
+$ltManifestJson = json_encode(
     $ltManifest,
     JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_QUOT | JSON_HEX_APOS
 );
+if (!is_string($ltManifestJson)) {
+    $ltManifestJson = '{"name":"LanternPress","start_url":"/"}';
+}
+
+
+$ltCacheDir = dirname($ltStaticManifest);
+if (!is_dir($ltCacheDir)) {
+    @mkdir($ltCacheDir, 0755, true);
+}
+if (is_dir($ltCacheDir) && is_writable($ltCacheDir)) {
+    $ltTmp = $ltStaticManifest . '.' . bin2hex(random_bytes(4)) . '.tmp';
+    if (@file_put_contents($ltTmp, $ltManifestJson, LOCK_EX) !== false && !@rename($ltTmp, $ltStaticManifest)) {
+        @unlink($ltTmp);
+    }
+}
+
+echo $ltManifestJson;

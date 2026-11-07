@@ -1,3 +1,18 @@
+(function () {
+if (window.LANTERTOWN_CONFIG) {
+return;
+}
+var el = document.getElementById('lt-config');
+if (el) {
+try {
+window.LANTERTOWN_CONFIG = JSON.parse(el.textContent);
+} catch (e) {
+window.LANTERTOWN_CONFIG = {};
+}
+} else {
+window.LANTERTOWN_CONFIG = {};
+}
+})();
 (() => {
 'use strict';
 function copyText(text) {
@@ -44,19 +59,21 @@ setTimeout(() => toast.remove(), 300);
 }
 class Lantern {
 constructor() {
-    this.initLazyLoad();
-    this.initBackToTop();
-    this.initSearchGuard();
-    this.initMobileMenuClose();
-    this.initSearchModal();
-    this.initArticleLinks();
-    this.initNavbar();
-    this.initRecommendSlider();
-    if (!window.LANTERTOWN_CONFIG) {
-        return;
-    }
-    this.initThemeMode();
-    this.initLoadMore();
+this.initLazyLoad();
+this.initBackToTop();
+this.initSearchGuard();
+this.initMobileMenuClose();
+this.initSearchModal();
+this.initArticleLinks();
+this.initFlinksApply();
+this.initFlinkIconFallback();
+this.initNavbar();
+this.initRecommendSlider();
+if (!window.LANTERTOWN_CONFIG) {
+return;
+}
+this.initThemeMode();
+this.initLoadMore();
 }
 initThemeMode() {
 const blog = document.getElementById('blog_container');
@@ -127,6 +144,20 @@ e.preventDefault();
 toggleMenu();
 }
 });
+list.addEventListener('click', (e) => {
+const toggle = e.target.closest('.mobile-sub-toggle');
+if (!toggle) {
+return;
+}
+const sub = document.getElementById(toggle.getAttribute('data-target'));
+if (!sub) {
+return;
+}
+const open = toggle.classList.toggle('open');
+sub.style.display = open ? 'block' : 'none';
+toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+toggle.setAttribute('aria-label', open ? '收起子菜单' : '展开子菜单');
+});
 }
 }
 initRecommendSlider() {
@@ -158,7 +189,13 @@ lazyBgs.forEach((el) => this._lazyObserver.observe(el));
 lazyBgs.forEach((el) => {
 const src = el.getAttribute('data-src');
 if (src) {
+if (/\/default-cover\.avif$/i.test(src)) {
+const webp = src.replace(/\.avif$/i, '.webp');
+el.style.backgroundImage = `url('${webp}')`;
+el.style.backgroundImage = `image-set(url('${src.replace(/'/g, "\\'")}') type('image/avif'), url('${webp}') type('image/webp'))`;
+} else {
 el.style.backgroundImage = `url('${src.replace(/'/g, "\\'")}')`;
+}
 el.classList.add('loaded');
 el.removeAttribute('data-src');
 el.classList.remove('lazy-bg');
@@ -326,8 +363,6 @@ e.preventDefault();
 e.stopPropagation();
 return;
 }
-// 指针捕获后 click target 被浏览器重定向为 slider，须用 pointerdown 记录的原始目标定位文章
-// （捕获阶段处理并阻止冒泡，避免 document 委托重复跳转；列表区无 capture 不受影响）
 const clickTarget = downTarget && document.contains(downTarget) ? downTarget : e.target;
 const item = clickTarget.closest('.article-item');
 if (item) {
@@ -406,6 +441,7 @@ this.setAttribute('href', newURL);
 this.closest('.loadmore')?.remove();
 }
 self.initLazyLoad();
+if (window.ltAvifRescan) window.ltAvifRescan();
 } catch (err) {
 this.removeAttribute('disabled');
 this.removeAttribute('aria-disabled');
@@ -425,7 +461,13 @@ return;
 const loadImage = (el) => {
 const src = el.getAttribute('data-src');
 if (src) {
+if (/\/default-cover\.avif$/i.test(src)) {
+const webp = src.replace(/\.avif$/i, '.webp');
+el.style.backgroundImage = `url('${webp}')`;
+el.style.backgroundImage = `image-set(url('${src.replace(/'/g, "\\'")}') type('image/avif'), url('${webp}') type('image/webp'))`;
+} else {
 el.style.backgroundImage = `url('${src.replace(/'/g, "\\'")}')`;
+}
 el.classList.add('loaded');
 el.removeAttribute('data-src');
 el.classList.remove('lazy-bg');
@@ -559,78 +601,101 @@ const href = item.getAttribute('data-href');
 if (href) window.location.href = href;
 });
 }
+initFlinksApply() {
+const form = document.getElementById('flinks-apply-form');
+if (!form) return;
+form.addEventListener('submit', function () {
+const logo = document.getElementById('logo');
+const ta = document.getElementById('textarea');
+if (logo && ta && logo.value.trim() !== '') {
+const v = logo.value.trim();
+if (ta.value.indexOf('[logo]') !== 0) {
+ta.value = '[logo]' + v + '[/logo]\n' + ta.value;
 }
-
+}
+});
+}
+initFlinkIconFallback() {
+document.addEventListener('error', function (e) {
+const target = e.target;
+if (!target || target.tagName !== 'IMG' || !target.classList.contains('flink-icon-img')) {
+return;
+}
+const name = (target.getAttribute('data-name') || '').trim();
+const span = document.createElement('span');
+span.className = 'flink-icon';
+span.textContent = name.charAt(0) || '•';
+if (target.parentNode) {
+target.parentNode.replaceChild(span, target);
+}
+}, true);
+}
+}
 window.Lantern = Lantern;
 window.LT_UTIL = { copyText: copyText, showToast: showToast };
 window.fitSidebarToContent = fitSidebarToContent;
-
 function fitSidebarToContent() {
-    var c = document.getElementById('post-content');
-    var s = document.getElementById('postSidebar');
-    if (!c || !s) return;
-    if (window.matchMedia('(min-width: 1151px)').matches) {
-        // min-height 语义：正文更高则侧边栏跟随正文高度；侧边栏内容更高时自然撑开，不被裁剪
-        s.style.minHeight = c.offsetHeight + 'px';
-    } else {
-        s.style.minHeight = '';
-    }
+var c = document.getElementById('post-content');
+var s = document.getElementById('postSidebar');
+if (!c || !s) return;
+if (window.matchMedia('(min-width: 1151px)').matches) {
+s.style.minHeight = c.offsetHeight + 'px';
+} else {
+s.style.minHeight = '';
 }
-// AVIF 降级：浏览器不支持 avif 时依次回退 webp → jpg/jpeg/png/gif/bmp/tif/tiff（自 footer 内联迁入统一管理）
+}
 function initAvifFallback() {
-    var d = document, q = 'img[src*=".avif"]',
-        s = 'data:image/avif;base64,AAAAIGZ0eXBhdmlmAAAAAGF2aWZtaXNwMmNjb2xpc29tYw==';
-    function t(c) {
-        var i = new Image();
-        i.onload = function () { c(i.width > 0); };
-        i.onerror = function () { c(false); };
-        i.src = s;
-    }
-    function r() {
-        var imgs = d.querySelectorAll(q);
-        for (var j = 0; j < imgs.length; j++) {
-            (function (img) {
-                var exts = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tif', '.tiff'], idx = 0, oldErr = img.onerror;
-                img.onerror = function () {
-                    var base = img.src.replace(/\.(webp|avif)(\?|$)/, '$2');
-                    function n() {
-                        if (idx >= exts.length) { if (oldErr) oldErr.call(img); return; }
-                        var ts = base.replace(/(\?|$)/, exts[idx] + '$1'); idx++;
-                        var ti = new Image();
-                        ti.onload = function () { img.src = ts; };
-                        ti.onerror = n;
-                        ti.src = ts;
-                    }
-                    n();
-                };
-                img.src = img.src.replace(/\.avif(\?|$)/, '.webp$1');
-            })(imgs[j]);
-        }
-    }
-    t(function (u) {
-        if (!u) {
-            if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', r);
-            else r();
-        }
-    });
+var d = document, q = 'img[src*=".avif"]',
+s = 'data:image/avif;base64,AAAAIGZ0eXBhdmlmAAAAAGF2aWZtaXNwMmNjb2xpc29tYw==';
+function t(c) {
+var i = new Image();
+i.onload = function () { c(i.width > 0); };
+i.onerror = function () { c(false); };
+i.src = s;
+}
+function r() {
+var imgs = d.querySelectorAll(q);
+for (var j = 0; j < imgs.length; j++) {
+(function (img) {
+var exts = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tif', '.tiff'], idx = 0, oldErr = img.onerror;
+img.onerror = function () {
+var base = img.src.replace(/\.(webp|avif)(\?|$)/, '$2');
+function n() {
+if (idx >= exts.length) { if (oldErr) oldErr.call(img); return; }
+var ts = base.replace(/(\?|$)/, exts[idx] + '$1'); idx++;
+var ti = new Image();
+ti.onload = function () { img.src = ts; };
+ti.onerror = n;
+ti.src = ts;
+}
+n();
+};
+img.src = img.src.replace(/\.avif(\?|$)/, '.webp$1');
+})(imgs[j]);
+}
+}
+t(function (u) {
+if (!u) {
+window.ltAvifRescan = r;
+if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', r);
+else r();
+}
+});
 }
 initAvifFallback();
 window.addEventListener('load', () => {
-    fitSidebarToContent();
-    // 图片懒加载/字体加载后正文高度可能变化，延迟再对齐一次
-    setTimeout(fitSidebarToContent, 200);
+fitSidebarToContent();
+setTimeout(fitSidebarToContent, 200);
 });
-// 懒加载图片在 load 之后才完成加载时，加载完成后再对齐一次（慢网兜底）
 document.querySelectorAll('#post-content img').forEach((img) => {
-    if (img && !img.complete) {
-        img.addEventListener('load', () => setTimeout(fitSidebarToContent, 60), { once: true });
-    }
+if (img && !img.complete) {
+img.addEventListener('load', () => setTimeout(fitSidebarToContent, 60), { once: true });
+}
 });
 let _ltSidebarResizeTimer = null;
 window.addEventListener('resize', () => {
-    if (_ltSidebarResizeTimer) clearTimeout(_ltSidebarResizeTimer);
-    _ltSidebarResizeTimer = setTimeout(fitSidebarToContent, 100);
+if (_ltSidebarResizeTimer) clearTimeout(_ltSidebarResizeTimer);
+_ltSidebarResizeTimer = setTimeout(fitSidebarToContent, 100);
 });
-
 window.LANTERN_INSTANCE = new Lantern();
 })();
